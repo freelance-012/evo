@@ -308,21 +308,21 @@ class RPE(PE):
             # np.savetxt("metrics_est_distances.txt", est_distances)
             # np.savetxt("metrics_error.txt", self.error)
             if self.pose_relation == PoseRelation.point_distance_error_ratio:
-                # nonzero = ref_distances.nonzero()[0]
-                # if nonzero.size != ref_distances.size:
-                #     logger.warning(
-                #         f"Ignoring {ref_distances.size - nonzero.size} zero "
-                #         "divisions in ratio calculations.")
-                #     self.delta_ids = [self.delta_ids[i] for i in nonzero]
+                nonzero = ref_distances.nonzero()[0]
+                if nonzero.size != ref_distances.size:
+                    logger.warning(
+                        f"Ignoring {ref_distances.size - nonzero.size} zero "
+                        "divisions in ratio calculations.")
+                    self.delta_ids = [self.delta_ids[i] for i in nonzero]
                 
                 # print(self.delta_ids)
                 # 跳过distance太小（小于1m）的pair。为了跳过类似悬停时，groundtruth本身也有误差导致的累计走了100m，但其实还是在原地的情况，对评估造成额外影响
-                threshold = 1
-                large_than_threshold = ref_distances > threshold
-                values_over_th = ref_distances[large_than_threshold]
-                indices_over_th = np.where(large_than_threshold)[0]
-                
-                self.delta_ids = [self.delta_ids[i] for i in indices_over_th]
+                # threshold = 1
+                # large_than_threshold = ref_distances > threshold
+                # values_over_th = ref_distances[large_than_threshold]
+                # indices_over_th = np.where(large_than_threshold)[0]
+
+                # self.delta_ids = [self.delta_ids[i] for i in indices_over_th]
                 # print(self.delta_ids)
 
                 # print("大于阈值的数值：", values_over_th)
