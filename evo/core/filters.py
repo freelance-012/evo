@@ -93,7 +93,7 @@ def filter_pairs_by_path(poses: typing.Sequence[np.ndarray], delta: float,
             if current_path >= delta:
                 # print("[sgx] current_path: {}".format(current_path))
                 # print("[sgx]i: {}".format(i))
-                # ids.append(i)
+                ids.append(i)
                 current_path = 0.0
         id_pairs = [(i, j) for i, j in zip(ids, ids[1:])]
         # print(id_pairs)
