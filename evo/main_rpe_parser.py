@@ -24,6 +24,8 @@ def parser() -> argparse.ArgumentParser:
                            action="store_true")
     algo_opts.add_argument("-s", "--correct_scale", action="store_true",
                            help="correct scale with Umeyama's method")
+    algo_opts.add_argument("-s2", "--correct_scale_v2", action="store_true",
+                           help="Scale alignment frame by frame with the ground truth")
     algo_opts.add_argument(
         "--n_to_align",
         help="the number of poses to use for Umeyama alignment, "

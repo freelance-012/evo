@@ -293,6 +293,74 @@ class PosePath3D(object):
         if self.num_poses < 2:
             return {}
         return {}  # no idea yet
+    
+    def rescale_with_groundtruth(self, traj_ref: 'PosePath3D'):
+        # np.savetxt("initial_ref_traj_xyz.txt", traj_ref.positions_xyz)
+        # np.savetxt("initial_est_traj_xyz.txt", self.positions_xyz)
+
+        base_ref = traj_ref.positions_xyz[0]
+        base_est = self.positions_xyz[0]
+
+        print("base_ref:{}".format(base_ref))
+        print("base_est:{}".format(base_est))
+
+        traj_ref_rel_xyz = traj_ref.positions_xyz - base_ref
+        traj_est_rel_xyz = self.positions_xyz - base_est
+
+        # np.savetxt("ref_relative_base.txt", traj_ref_rel_xyz)
+        # np.savetxt("est_relative_base.txt", traj_est_rel_xyz)
+
+
+        # print(traj_ref_rel_xyz)
+        # print(traj_est_rel_xyz)
+        # print(len(traj_ref_rel_xyz))
+        # print(len(traj_est_rel_xyz))
+
+        # print(traj_ref_rel_xyz[0])
+        # print(traj_est_rel_xyz[0])
+
+        traj_ref_norms = np.linalg.norm(traj_ref_rel_xyz, axis=1)
+        #print(traj_ref_norms)
+        traj_est_norms = np.linalg.norm(traj_est_rel_xyz, axis=1)
+        #print(traj_est_norms)
+
+        # np.savetxt("ref_relative_base_norm.txt", traj_ref_norms)
+        # np.savetxt("est_relative_base_norm.txt", traj_est_norms)
+        #print(np.linalg.norm(base_ref)/np.linalg.norm(base_est))
+        scales = np.array([traj_ref_norms[1]/traj_est_norms[1]] + list(traj_ref_norms[1:] / traj_est_norms[1:]))
+        #print(scales[0]) 
+
+
+        # 限制尺度波动幅度
+        median = np.median(scales)
+        mad = abs(scales - median)
+        # print("mad: ", mad)
+        mad = np.median(mad)
+        print("mad median:", mad)
+        threshold = 3
+        correction = threshold * mad
+        scales = np.where(np.abs(scales - median) > correction, median + np.sign(scales - median) * correction, scales)
+
+
+        # np.savetxt("scales.txt", scales)
+
+        print("max scale correction: ", np.max(scales))
+        print("min scale correction: ", np.min(scales))
+
+        print("mean scale correction: ", np.mean(scales))
+        print("median scale correction: ", np.median(scales))
+        
+        #print(self.positions_xyz)
+        # print(scales)
+        if hasattr(self, "_positions_xyz"):
+            self._positions_xyz = self._positions_xyz * scales[:, np.newaxis]
+
+        # np.savetxt("scaled_est_xyz.txt", self._positions_xyz)
+        # print(traj_ref.positions_xyz)
+        #print(self.positions_xyz)
+
+        return self
+
 
 
 class PoseTrajectory3D(PosePath3D, object):

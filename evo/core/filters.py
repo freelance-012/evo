@@ -84,14 +84,27 @@ def filter_pairs_by_path(poses: typing.Sequence[np.ndarray], delta: float,
         ids = []
         previous_pose = poses[0]
         current_path = 0.0
+
         for i, current_pose in enumerate(poses):
             current_path += float(
                 np.linalg.norm(current_pose[:3, 3] - previous_pose[:3, 3]))
             previous_pose = current_pose
+
             if current_path >= delta:
-                ids.append(i)
+                # print("[sgx] current_path: {}".format(current_path))
+                # print("[sgx]i: {}".format(i))
+                # ids.append(i)
                 current_path = 0.0
         id_pairs = [(i, j) for i, j in zip(ids, ids[1:])]
+        # print(id_pairs)
+        # [print("{}-{}".format(poses[i][:3, 3], poses[j][:3, 3])) for i,j in id_pairs]
+        # [print("{}-{}: {}".format(poses[i][:3, 3], poses[j][:3, 3], poses[i][:3, 3]-poses[j][:3,3])) for i,j in id_pairs]
+        # [print("norm: {}".format(np.linalg.norm(poses[i][:3, 3]-poses[j][:3,3]))) for i,j in id_pairs]
+        # ref_distances = np.array([
+        #         np.linalg.norm(poses[i][:3, 3] -
+        #                        poses[j][:3, 3]) for i, j in id_pairs
+        #     ])
+        # print(ref_distances)
     return id_pairs
 
 

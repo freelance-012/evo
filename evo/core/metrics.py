@@ -279,6 +279,8 @@ class RPE(PE):
         # Store flat id list e.g. for plotting.
         self.delta_ids = [j for i, j in id_pairs]
 
+        # print("sgx: id_pairs: {}".format(id_pairs))
+
         if self.pose_relation in (PoseRelation.point_distance,
                                   PoseRelation.point_distance_error_ratio):
             # Only compares the magnitude of the point distance instead of
@@ -293,6 +295,17 @@ class RPE(PE):
                                traj_est.positions_xyz[j]) for i, j in id_pairs
             ])
             self.error = np.abs(ref_distances - est_distances)
+
+            # print(traj_ref.positions_xyz)
+            # print(traj_est.positions_xyz)
+            # print(ref_distances)
+            # print(est_distances)
+            # print(self.error)
+            # np.savetxt("metrics_traj_ref_xyz.txt", traj_ref.positions_xyz)
+            # np.savetxt("metrics_traj_est_xyz.txt", traj_est.positions_xyz)
+            # np.savetxt("metrics_ref_distances.txt", ref_distances)
+            # np.savetxt("metrics_est_distances.txt", est_distances)
+            # np.savetxt("metrics_error.txt", self.error)
             if self.pose_relation == PoseRelation.point_distance_error_ratio:
                 nonzero = ref_distances.nonzero()[0]
                 if nonzero.size != ref_distances.size:
@@ -302,6 +315,8 @@ class RPE(PE):
                     self.delta_ids = [self.delta_ids[i] for i in nonzero]
                 self.error = np.divide(self.error[nonzero],
                                        ref_distances[nonzero]) * 100
+                # np.savetxt("metrics_error_ratio.txt", self.error)
+                
         else:
             # All other pose relations require the full pose error.
             self.E = [

@@ -38,12 +38,13 @@ logger = logging.getLogger(__name__)
 
 SEP = "-" * 80  # separator line
 
-
 def rpe(traj_ref: PosePath3D, traj_est: PosePath3D,
         pose_relation: metrics.PoseRelation, delta: float,
         delta_unit: metrics.Unit, rel_delta_tol: float = 0.1,
         all_pairs: bool = False, pairs_from_reference: bool = False,
-        align: bool = False, correct_scale: bool = False, n_to_align: int = -1,
+        align: bool = False, correct_scale: bool = False, 
+        scale_with_gt: bool = False,
+        n_to_align: int = -1,
         align_origin: bool = False, ref_name: str = "reference",
         est_name: str = "estimate", support_loop: bool = False,
         change_unit: typing.Optional[metrics.Unit] = None) -> Result:
@@ -51,13 +52,21 @@ def rpe(traj_ref: PosePath3D, traj_est: PosePath3D,
     # Align the trajectories.
     only_scale = correct_scale and not align
     alignment_transformation = None
-    if align or correct_scale:
-        logger.debug(SEP)
-        alignment_transformation = lie_algebra.sim3(
-            *traj_est.align(traj_ref, correct_scale, only_scale, n=n_to_align))
-    elif align_origin:
-        logger.debug(SEP)
-        alignment_transformation = traj_est.align_origin(traj_ref)
+
+    if scale_with_gt:
+        if align or correct_scale or align_origin:
+            print("scale with ground truth mode. align params ignored.")
+            
+        traj_est.rescale_with_groundtruth(traj_ref)
+
+    else:
+        if align or correct_scale:
+            logger.debug(SEP)
+            alignment_transformation = lie_algebra.sim3(
+                *traj_est.align(traj_ref, correct_scale, only_scale, n=n_to_align))
+        elif align_origin:
+            logger.debug(SEP)
+            alignment_transformation = traj_est.align_origin(traj_ref)
 
     # Calculate RPE.
     logger.debug(SEP)
@@ -154,13 +163,14 @@ def run(args: argparse.Namespace) -> None:
         traj_ref, traj_est = sync.associate_trajectories(
             traj_ref, traj_est, args.t_max_diff, args.t_offset,
             first_name=ref_name, snd_name=est_name)
-
+        
     result = rpe(traj_ref=traj_ref, traj_est=traj_est,
                  pose_relation=pose_relation, delta=args.delta,
                  delta_unit=delta_unit, rel_delta_tol=args.delta_tol,
                  all_pairs=args.all_pairs,
                  pairs_from_reference=args.pairs_from_reference,
                  align=args.align, correct_scale=args.correct_scale,
+                 scale_with_gt=args.correct_scale_v2,
                  n_to_align=args.n_to_align, align_origin=args.align_origin,
                  ref_name=ref_name, est_name=est_name, change_unit=change_unit)
 
