@@ -23,10 +23,12 @@ import copy
 import os
 import collections
 import collections.abc
+import itertools
 import logging
 import pickle
 import typing
 from enum import Enum, unique
+from pathlib import Path
 
 import numpy as np
 import matplotlib as mpl
@@ -35,12 +37,16 @@ import matplotlib.pyplot as plt
 import mpl_toolkits.mplot3d.art3d as art3d
 import seaborn as sns
 from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from matplotlib.backend_bases import FigureCanvasBase
 from matplotlib.collections import LineCollection
+from matplotlib.ticker import FuncFormatter
 from matplotlib.transforms import Affine2D, Bbox
 
 from evo import EvoException
 from evo.tools import user
+from evo.tools._typing import PathStr
 from evo.tools.settings import SETTINGS, SettingsContainer
 from evo.core import trajectory
 from evo.core.units import Unit, LENGTH_UNITS, METER_SCALE_FACTORS
@@ -56,11 +62,13 @@ def apply_settings(settings: SettingsContainer = SETTINGS):
     """
     mpl.use(settings.plot_backend)
 
-    # TODO: 'color_codes=False' to work around this bug:
-    # https://github.com/mwaskom/seaborn/issues/1546
-    sns.set(style=settings.plot_seaborn_style, font=settings.plot_fontfamily,
-            font_scale=settings.plot_fontscale, color_codes=False,
-            palette=settings.plot_seaborn_palette)
+    if settings.plot_seaborn_enabled:
+        # TODO: 'color_codes=False' to work around this bug:
+        # https://github.com/mwaskom/seaborn/issues/1546
+        sns.set(style=settings.plot_seaborn_style,
+                font=settings.plot_fontfamily,
+                font_scale=settings.plot_fontscale, color_codes=False,
+                palette=settings.plot_seaborn_palette)
 
     mpl.rcParams.update({
         "lines.linewidth": settings.plot_linewidth,
@@ -68,6 +76,8 @@ def apply_settings(settings: SettingsContainer = SETTINGS):
         "font.family": settings.plot_fontfamily,
         "pgf.texsystem": settings.plot_texsystem
     })
+    if "xkcd" in settings:
+        plt.xkcd()
 
 
 apply_settings(SETTINGS)
@@ -97,21 +107,21 @@ class Viewport(Enum):
 
 class PlotCollection:
     def __init__(self, title: str = "",
-                 deserialize: typing.Optional[str] = None):
+                 deserialize: typing.Optional[PathStr] = None):
         self.title = " ".join(title.splitlines())  # one line title
         self.figures = collections.OrderedDict()  # remember placement order
         # hack to avoid premature garbage collection when serializing with Qt
         # initialized later in tabbed_{qt, tk}_window
         self.root_window: typing.Optional[typing.Any] = None
         if deserialize is not None:
-            logger.debug("Deserializing PlotCollection from " + deserialize +
-                         "...")
+            logger.debug("Deserializing PlotCollection from %s ...",
+                         deserialize)
             self.figures = pickle.load(open(deserialize, 'rb'))
 
     def __str__(self) -> str:
         return self.title + " (" + str(len(self.figures)) + " figure(s))"
 
-    def add_figure(self, name: str, fig: plt.Figure) -> None:
+    def add_figure(self, name: str, fig: Figure) -> None:
         fig.tight_layout()
         self.figures[name] = fig
 
@@ -235,7 +245,7 @@ class PlotCollection:
                 logger.info("Plot saved to " + dest)
 
 
-def set_aspect_equal(ax: plt.Axes) -> None:
+def set_aspect_equal(ax: Axes) -> None:
     """
     kudos to https://stackoverflow.com/a/35126679
     :param ax: matplotlib 3D axes object
@@ -264,16 +274,16 @@ def set_aspect_equal(ax: plt.Axes) -> None:
     ax.set_zlim3d([zmean - plot_radius, zmean + plot_radius])
 
 
-def _get_length_formatter(length_unit: Unit) -> typing.Callable:
+def _get_length_formatter(length_unit: Unit) -> FuncFormatter:
     def formatter(x, _):
         return "{0:g}".format(x / METER_SCALE_FACTORS[length_unit])
 
-    return formatter
+    return FuncFormatter(formatter)
 
 
-def prepare_axis(fig: plt.Figure, plot_mode: PlotMode = PlotMode.xy,
+def prepare_axis(fig: Figure, plot_mode: PlotMode = PlotMode.xy,
                  subplot_arg: int = 111,
-                 length_unit: Unit = Unit.meters) -> plt.Axes:
+                 length_unit: Unit = Unit.meters) -> Axes:
     """
     prepares an axis according to the plot mode (for trajectory plotting)
     :param fig: matplotlib figure object
@@ -304,7 +314,7 @@ def prepare_axis(fig: plt.Figure, plot_mode: PlotMode = PlotMode.xy,
         ylabel = f"$z$ ({length_unit.value})"
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    if plot_mode == PlotMode.xyz:
+    if plot_mode == PlotMode.xyz and isinstance(ax, Axes3D):
         ax.set_zlabel(f'$z$ ({length_unit.value})')
     if SETTINGS.plot_invert_xaxis:
         plt.gca().invert_xaxis()
@@ -317,7 +327,7 @@ def prepare_axis(fig: plt.Figure, plot_mode: PlotMode = PlotMode.xy,
         formatter = _get_length_formatter(length_unit)
         ax.xaxis.set_major_formatter(formatter)
         ax.yaxis.set_major_formatter(formatter)
-        if plot_mode == PlotMode.xyz:
+        if plot_mode == PlotMode.xyz and isinstance(ax, Axes3D):
             ax.zaxis.set_major_formatter(formatter)
 
     return ax
@@ -347,10 +357,10 @@ def plot_mode_to_idx(
     return x_idx, y_idx, z_idx
 
 
-def add_start_end_markers(ax: plt.Axes, plot_mode: PlotMode,
+def add_start_end_markers(ax: Axes, plot_mode: PlotMode,
                           traj: trajectory.PosePath3D, start_symbol: str = "o",
-                          start_color: str = "black", end_symbol: str = "x",
-                          end_color: str = "black", alpha: float = 1.0,
+                          start_color="black", end_symbol: str = "x",
+                          end_color="black", alpha: float = 1.0,
                           traj_name: typing.Optional[str] = None):
     if traj.num_poses == 0:
         return
@@ -364,15 +374,16 @@ def add_start_end_markers(ax: plt.Axes, plot_mode: PlotMode,
         end_coords.append(end[z_idx])
     start_label = f"Start of {traj_name}" if traj_name else None
     end_label = f"End of {traj_name}" if traj_name else None
+    # TODO: mypy doesn't deal well with * unpack here for some reason.
     ax.scatter(*start_coords, marker=start_symbol, color=start_color,
-               alpha=alpha, label=start_label)
+               alpha=alpha, label=start_label)  # type: ignore[misc]
     ax.scatter(*end_coords, marker=end_symbol, color=end_color, alpha=alpha,
-               label=end_label)
+               label=end_label)  # type: ignore[misc]
 
 
-def traj(ax: plt.Axes, plot_mode: PlotMode, traj: trajectory.PosePath3D,
-         style: str = '-', color: str = 'black', label: str = "",
-         alpha: float = 1.0, plot_start_end_markers: bool = False) -> None:
+def traj(ax: Axes, plot_mode: PlotMode, traj: trajectory.PosePath3D,
+         style: str = '-', color='black', label: str = "", alpha: float = 1.0,
+         plot_start_end_markers: bool = False) -> None:
     """
     plot a path/trajectory based on xyz coordinates into an axis
     :param ax: the matplotlib axis
@@ -403,7 +414,7 @@ def traj(ax: plt.Axes, plot_mode: PlotMode, traj: trajectory.PosePath3D,
 
 
 def colored_line_collection(
-    xyz: np.ndarray, colors: ListOrArray, plot_mode: PlotMode = PlotMode.xy,
+    xyz: np.ndarray, colors, plot_mode: PlotMode = PlotMode.xy,
     linestyles: str = "solid", step: int = 1, alpha: float = 1.
 ) -> typing.Union[LineCollection, art3d.LineCollection]:
     if step > 1 and len(xyz) / step != len(colors):
@@ -429,9 +440,9 @@ def colored_line_collection(
     return line_collection
 
 
-def traj_colormap(ax: plt.Axes, traj: trajectory.PosePath3D,
-                  array: ListOrArray, plot_mode: PlotMode, min_map: float,
-                  max_map: float, title: str = "",
+def traj_colormap(ax: Axes, traj: trajectory.PosePath3D, array: ListOrArray,
+                  plot_mode: PlotMode, min_map: float, max_map: float,
+                  title: str = "",
                   fig: typing.Optional[mpl.figure.Figure] = None,
                   plot_start_end_markers: bool = False) -> None:
     """
@@ -454,13 +465,17 @@ def traj_colormap(ax: plt.Axes, traj: trajectory.PosePath3D,
         norm=norm,
         cmap=SETTINGS.plot_trajectory_cmap)  # cm.*_r is reversed cmap
     mapper.set_array(array)
-    colors = [mapper.to_rgba(a) for a in array]
+    # TODO: why does mypy complain about 'a' here, float is fine?
+    colors = [mapper.to_rgba(a) for a in array]  # type: ignore[arg-type]
     line_collection = colored_line_collection(pos, colors, plot_mode)
     ax.add_collection(line_collection)
     ax.autoscale_view(True, True, True)
-    if plot_mode == PlotMode.xyz:
-        ax.set_zlim(np.amin(traj.positions_xyz[:, 2]),
-                    np.amax(traj.positions_xyz[:, 2]))
+    if plot_mode == PlotMode.xyz and isinstance(ax, Axes3D):
+        min_z = np.amin(traj.positions_xyz[:, 2])
+        max_z = np.amax(traj.positions_xyz[:, 2])
+        # Only adjust limits if there are z values to suppress mpl warning.
+        if min_z != max_z:
+            ax.set_zlim(min_z, max_z)
     if SETTINGS.plot_xyz_realistic:
         set_aspect_equal(ax)
     if fig is None:
@@ -481,10 +496,9 @@ def traj_colormap(ax: plt.Axes, traj: trajectory.PosePath3D,
                               end_color=colors[-1])
 
 
-def draw_coordinate_axes(ax: plt.Figure, traj: trajectory.PosePath3D,
+def draw_coordinate_axes(ax: Axes, traj: trajectory.PosePath3D,
                          plot_mode: PlotMode, marker_scale: float = 0.1,
-                         x_color: str = "r", y_color: str = "g",
-                         z_color: str = "b") -> None:
+                         x_color="r", y_color="g", z_color="b") -> None:
     """
     Draws a coordinate frame axis for each pose of a trajectory.
     :param ax: plot axis
@@ -521,10 +535,10 @@ def draw_coordinate_axes(ax: plt.Figure, traj: trajectory.PosePath3D,
     ax.add_collection(markers)
 
 
-def draw_correspondence_edges(ax: plt.Axes, traj_1: trajectory.PosePath3D,
+def draw_correspondence_edges(ax: Axes, traj_1: trajectory.PosePath3D,
                               traj_2: trajectory.PosePath3D,
                               plot_mode: PlotMode, style: str = '-',
-                              color: str = "black", alpha: float = 1.) -> None:
+                              color="black", alpha: float = 1.) -> None:
     """
     Draw edges between corresponding poses of two trajectories.
     Trajectories must be synced, i.e. having the same number of poses.
@@ -550,7 +564,7 @@ def draw_correspondence_edges(ax: plt.Axes, traj_1: trajectory.PosePath3D,
 
 
 def traj_xyz(axarr: np.ndarray, traj: trajectory.PosePath3D, style: str = '-',
-             color: str = 'black', label: str = "", alpha: float = 1.0,
+             color='black', label: str = "", alpha: float = 1.0,
              start_timestamp: typing.Optional[float] = None,
              length_unit: Unit = Unit.meters) -> None:
     """
@@ -594,12 +608,12 @@ def traj_xyz(axarr: np.ndarray, traj: trajectory.PosePath3D, style: str = '-',
                       label=label, alpha=alpha)
         axarr[i].set_ylabel(ylabels[i])
     axarr[2].set_xlabel(xlabel)
-    if label:
+    if label and SETTINGS.plot_show_legend:
         axarr[0].legend(frameon=True)
 
 
 def traj_rpy(axarr: np.ndarray, traj: trajectory.PosePath3D, style: str = '-',
-             color: str = 'black', label: str = "", alpha: float = 1.0,
+             color='black', label: str = "", alpha: float = 1.0,
              start_timestamp: typing.Optional[float] = None) -> None:
     """
     plot a path/trajectory's Euler RPY angles into an axis
@@ -632,11 +646,33 @@ def traj_rpy(axarr: np.ndarray, traj: trajectory.PosePath3D, style: str = '-',
                       label=label, alpha=alpha)
         axarr[i].set_ylabel(ylabels[i])
     axarr[2].set_xlabel(xlabel)
-    if label:
+    if label and SETTINGS.plot_show_legend:
         axarr[0].legend(frameon=True)
 
 
-def trajectories(fig: plt.Figure, trajectories: typing.Union[
+def speeds(ax: Axes, traj: trajectory.PoseTrajectory3D, style: str = '-',
+           color="black", label: str = "", alpha: float = 1.):
+    """
+    Plots the speed between poses of a trajectory.
+    Note that a speed value is shown at the timestamp of the newer pose.
+    :param ax: matplotlib axis
+    :param traj: trajectory.PoseTrajectory3D object
+    :param style: matplotlib line style
+    :param color: matplotlib color
+    :param label: label (for legend)
+    :param alpha: alpha value for transparency
+    """
+    if not isinstance(traj, trajectory.PoseTrajectory3D):
+        raise PlotException("speeds can only be plotted with trajectories")
+    ax.plot(traj.timestamps[1:], traj.speeds, style, color=color, alpha=alpha,
+            label=label)
+    ax.set_xlabel("$t$ (s)")
+    ax.set_ylabel("$v$ (m/s)")
+    if label and SETTINGS.plot_show_legend:
+        ax.legend(frameon=True)
+
+
+def trajectories(fig: Figure, trajectories: typing.Union[
         trajectory.PosePath3D, typing.Sequence[trajectory.PosePath3D],
         typing.Dict[str, trajectory.PosePath3D]], plot_mode=PlotMode.xy,
                  title: str = "", subplot_arg: int = 111,
@@ -665,10 +701,12 @@ def trajectories(fig: plt.Figure, trajectories: typing.Union[
         cmap = getattr(cm, SETTINGS.plot_multi_cmap)
         cmap_colors = iter(cmap(np.linspace(0, 1, len(trajectories))))
 
+    color_palette = itertools.cycle(sns.color_palette())
+
     # helper function
     def draw(t, name=""):
         if cmap_colors is None:
-            color = next(ax._get_lines.prop_cycler)['color']
+            color = next(color_palette)
         else:
             color = next(cmap_colors)
         if SETTINGS.plot_usetex:
@@ -686,12 +724,12 @@ def trajectories(fig: plt.Figure, trajectories: typing.Union[
             draw(t)
 
 
-def error_array(ax: plt.Axes, err_array: ListOrArray,
+def error_array(ax: Axes, err_array: ListOrArray,
                 x_array: typing.Optional[ListOrArray] = None,
                 statistics: typing.Optional[typing.Dict[str, float]] = None,
                 threshold: typing.Optional[float] = None,
-                cumulative: bool = False, color: str = 'grey',
-                name: str = "error", title: str = "", xlabel: str = "index",
+                cumulative: bool = False, color='grey', name: str = "error",
+                title: str = "", xlabel: str = "index",
                 ylabel: typing.Optional[str] = None, subplot_arg: int = 111,
                 linestyle: str = "-", marker: typing.Optional[str] = None):
     """
@@ -724,9 +762,10 @@ def error_array(ax: plt.Axes, err_array: ListOrArray,
         else:
             ax.plot(err_array, linestyle=linestyle, marker=marker, color=color,
                     label=name)
+    color_pallete = itertools.cycle(sns.color_palette())
     if statistics is not None:
         for stat_name, value in statistics.items():
-            color = next(ax._get_lines.prop_cycler)['color']
+            color = next(color_pallete)
             if stat_name == "std" and "mean" in statistics:
                 mean, std = statistics["mean"], statistics["std"]
                 ax.axhspan(mean - std / 2, mean + std / 2, color=color,
@@ -744,7 +783,7 @@ def error_array(ax: plt.Axes, err_array: ListOrArray,
 
 
 def ros_map(
-    ax: plt.Axes, yaml_path: str, plot_mode: PlotMode,
+    ax: Axes, yaml_path: PathStr, plot_mode: PlotMode,
     cmap: str = SETTINGS.ros_map_cmap,
     mask_unknown_value: typing.Optional[int] = (
         SETTINGS.ros_map_unknown_cell_value if SETTINGS.ros_map_enable_masking
@@ -773,13 +812,14 @@ def ros_map(
         return
     x_idx, y_idx, _ = plot_mode_to_idx(plot_mode)
 
+    yaml_path = Path(yaml_path)
     with open(yaml_path) as f:
         metadata = yaml.safe_load(f)
 
     # Load map image, mask unknown cells if desired.
-    image_path = metadata["image"]
-    if not os.path.isabs(image_path):
-        image_path = os.path.join(os.path.dirname(yaml_path), image_path)
+    image_path = Path(metadata["image"])
+    if not image_path.is_absolute():
+        image_path = yaml_path.parent / image_path
     image = plt.imread(image_path)
 
     if mask_unknown_value:
@@ -815,7 +855,7 @@ def ros_map(
     n_rows, n_cols = image.shape[x_idx], image.shape[y_idx]
     metric_width = n_cols * resolution
     metric_height = n_rows * resolution
-    extent = [0, metric_width, 0, metric_height]
+    extent = (0, metric_width, 0, metric_height)
     if plot_mode == PlotMode.yx:
         image = np.rot90(image)
         image = np.fliplr(image)

@@ -21,6 +21,7 @@ along with evo.  If not, see <http://www.gnu.org/licenses/>.
 
 import logging
 import typing
+from enum import Enum, unique
 
 import numpy as np
 
@@ -28,6 +29,7 @@ from evo import EvoException
 import evo.core.transformations as tr
 import evo.core.geometry as geometry
 from evo.core import lie_algebra as lie
+from evo.core import filters
 
 logger = logging.getLogger(__name__)
 
@@ -36,16 +38,26 @@ class TrajectoryException(EvoException):
     pass
 
 
+@unique
+class Plane(Enum):
+    """
+    Planes embedded in R3, e.g. for projection purposes.
+    """
+    XY = "xy"
+    XZ = "xz"
+    YZ = "yz"
+
+
 class PosePath3D(object):
     """
     just a path, no temporal information
     also: base class for real trajectory
     """
     def __init__(
-            self, positions_xyz: typing.Optional[np.ndarray] = None,
-            orientations_quat_wxyz: typing.Optional[np.ndarray] = None,
-            poses_se3: typing.Optional[typing.Sequence[np.ndarray]] = None,
-            meta: typing.Optional[dict] = None):
+        self, positions_xyz: typing.Optional[np.ndarray] = None,
+        orientations_quat_wxyz: typing.Optional[np.ndarray] = None,
+        poses_se3: typing.Optional[typing.Sequence[np.ndarray]] = None,
+        meta: typing.Optional[dict] = None):
         """
         :param positions_xyz: nx3 list of x,y,z positions
         :param orientations_quat_wxyz: nx4 list of quaternions (w,x,y,z format)
@@ -65,6 +77,7 @@ class PosePath3D(object):
         if self.num_poses == 0:
             raise TrajectoryException("pose data is empty")
         self.meta = {} if meta is None else meta
+        self._projected = False
 
     def __str__(self) -> str:
         return "{} poses, {:.3f}m path length".format(self.num_poses,
@@ -184,6 +197,38 @@ class PosePath3D(object):
         if hasattr(self, "_positions_xyz"):
             self._positions_xyz = s * self._positions_xyz
 
+    def project(self, plane: Plane) -> None:
+        """
+        Projects the positions and orientations of the path into a plane.
+        :param plane: desired plane into which the poses will be projected
+        """
+        if self._projected:
+            raise TrajectoryException("path was already projected once")
+        if plane == Plane.XY:
+            null_dim = 2  # Z
+        elif plane == Plane.XZ:
+            null_dim = 1  # Y
+        elif plane == Plane.YZ:
+            null_dim = 0  # X
+        else:
+            raise TrajectoryException(f"unknown projection plane {plane}")
+
+        # Project poses and rotations (forcing to angle around normal).
+        rotation_axis = np.zeros(3)
+        rotation_axis[null_dim] = 1
+        for pose in self.poses_se3:
+            pose[null_dim, 3] = 0
+            angle_axis = rotation_axis * tr.euler_from_matrix(
+                pose[:3, :3], "sxyz")[null_dim]
+            pose[:3, :3] = lie.so3_exp(angle_axis)
+
+        # Flush cached data that will be regenerated on demand via @property.
+        if hasattr(self, "_positions_xyz"):
+            del self._positions_xyz
+        if hasattr(self, "_orientations_quat_wxyz"):
+            del self._orientations_quat_wxyz
+        self._projected = True
+
     def align(self, traj_ref: 'PosePath3D', correct_scale: bool = False,
               correct_only_scale: bool = False,
               n: int = -1) -> geometry.UmeyamaResult:
@@ -253,6 +298,35 @@ class PosePath3D(object):
             self._orientations_quat_wxyz = self._orientations_quat_wxyz[ids]
         if hasattr(self, "_poses_se3"):
             self._poses_se3 = [self._poses_se3[idx] for idx in ids]
+
+    def downsample(self, num_poses: int) -> None:
+        """
+        Downsample the trajectory to the specified number of poses
+        with a simple evenly spaced sampling.
+        Does nothing if the trajectory already has less or equal poses.
+        :param num_poses: number of poses to keep
+        """
+        if self.num_poses <= num_poses:
+            return
+        if num_poses < 1:
+            raise TrajectoryException("can't downsample to less than one pose")
+        ids = np.linspace(0, self.num_poses - 1, num_poses, dtype=int)
+        self.reduce_to_ids(ids)
+
+    def motion_filter(self, distance_threshold: float, angle_threshold: float,
+                      degrees: bool = False) -> None:
+        """
+        Filters the trajectory by its motion if either the accumulated distance
+        or rotation angle is exceeded.
+        :param distance_threshold: the distance threshold in meters
+        :param angle_threshold: the angle threshold in radians
+                                (or degrees if degrees=True)
+        :param degrees: set to True if angle_threshold is in degrees
+        """
+        filtered_ids = filters.filter_by_motion(self.poses_se3,
+                                                distance_threshold,
+                                                angle_threshold, degrees)
+        self.reduce_to_ids(filtered_ids)
 
     def check(self) -> typing.Tuple[bool, dict]:
         """
@@ -368,11 +442,11 @@ class PoseTrajectory3D(PosePath3D, object):
     a PosePath with temporal information
     """
     def __init__(
-            self, positions_xyz: typing.Optional[np.ndarray] = None,
-            orientations_quat_wxyz: typing.Optional[np.ndarray] = None,
-            timestamps: typing.Optional[np.ndarray] = None,
-            poses_se3: typing.Optional[typing.Sequence[np.ndarray]] = None,
-            meta: typing.Optional[dict] = None):
+        self, positions_xyz: typing.Optional[np.ndarray] = None,
+        orientations_quat_wxyz: typing.Optional[np.ndarray] = None,
+        timestamps: typing.Optional[np.ndarray] = None,
+        poses_se3: typing.Optional[typing.Sequence[np.ndarray]] = None,
+        meta: typing.Optional[dict] = None):
         """
         :param timestamps: optional nx1 list of timestamps
         """
@@ -483,13 +557,17 @@ class PoseTrajectory3D(PosePath3D, object):
         vmax = speeds.max()
         vmin = speeds.min()
         vmean = speeds.mean()
+        delta_ts = self.timestamps[1:] - self.timestamps[:-1]
         stats.update({
             "v_max (m/s)": vmax,
             "v_min (m/s)": vmin,
             "v_avg (m/s)": vmean,
             "v_max (km/h)": vmax * 3.6,
             "v_min (km/h)": vmin * 3.6,
-            "v_avg (km/h)": vmean * 3.6
+            "v_avg (km/h)": vmean * 3.6,
+            "dt_max (s)": delta_ts.max(),
+            "dt_min (s)": delta_ts.min(),
+            "dt_avg (s)": delta_ts.mean(),
         })
         return stats
 

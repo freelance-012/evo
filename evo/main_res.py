@@ -106,9 +106,13 @@ def run(args: argparse.Namespace) -> None:
                     "keeping only first occurrence of duplicates".format(key))
                 new_error_df = new_error_df[~duplicates]  # type: ignore
             error_df = pd.concat([error_df, new_error_df], axis=1)
+        error_df.sort_index(inplace=True)
 
     # check titles
-    first_title = df.loc["info", "title"][0] if not args.ignore_title else ""
+    if args.ignore_title:
+        first_title = ""
+    else:
+        first_title = df.loc["info", "title"].iloc[0]
     first_file = args.result_files[0]
     if not args.no_warnings and not args.ignore_title:
         checks = df.loc["info", "title"] != first_title
@@ -116,7 +120,7 @@ def run(args: argparse.Namespace) -> None:
             if not differs:
                 continue
             else:
-                mismatching_title = df.loc["info", "title"][i]
+                mismatching_title = df.loc["info", "title"].iloc[i]
                 mismatching_file = args.result_files[i]
                 logger.debug(SEP)
                 logger.warning(
@@ -129,8 +133,8 @@ def run(args: argparse.Namespace) -> None:
                     sys.exit()
 
     logger.debug(SEP)
-    logger.debug("Aggregated dataframe:\n{}".format(
-        df.to_string(line_width=80)))
+    logger.debug("Aggregated dataframe:\n%s",
+                 df.to_string(line_width=80, max_colwidth=40))
 
     # show a statistics overview
     logger.debug(SEP)
@@ -173,10 +177,10 @@ def run(args: argparse.Namespace) -> None:
         # labels according to first dataset
         if "xlabel" in df.loc["info"].index and not df.loc[
                 "info", "xlabel"].isnull().values.any():
-            index_label = df.loc["info", "xlabel"][0]
+            index_label = df.loc["info", "xlabel"].iloc[0]
         else:
             index_label = "$t$ (s)" if common_index else "index"
-        metric_label = df.loc["info", "label"][0]
+        metric_label = df.loc["info", "label"].iloc[0]
 
         plot_collection = plot.PlotCollection(first_title)
         # raw value plot

@@ -19,7 +19,7 @@ along with evo.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import os
-import pkgutil
+import importlib.util
 
 
 def get_default_plot_backend() -> str:
@@ -28,7 +28,7 @@ def get_default_plot_backend() -> str:
 
     backends = {"PyQt5": "Qt5Agg"}
     for pkg in backends:
-        if pkgutil.find_loader(pkg) is not None:
+        if importlib.util.find_spec(pkg) is not None:
             return backends[pkg]
     return "TkAgg"
 
@@ -123,6 +123,11 @@ DEFAULT_SETTINGS_DICT_DOC = {
         0.,
         "Scaling parameter of pose coordinate frame markers of reference trajectories. "
         + "0 will draw nothing."
+    ),
+    "plot_seaborn_enabled": (
+        True,
+        "Enables / disables seaborn's styling for plots.\n"
+        "Setting this to false will use the classic matplotlib style."
     ),
     "plot_seaborn_palette": (
         "deep6",

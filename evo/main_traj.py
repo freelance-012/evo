@@ -23,8 +23,9 @@ along with evo.  If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
 import datetime
+import itertools
 import logging
-import os
+from pathlib import Path
 
 from natsort import natsorted
 
@@ -75,7 +76,7 @@ def load_trajectories(args):
     elif args.subcommand in ("bag", "bag2"):
         if not (args.topics or args.all_topics):
             die("No topics used - specify topics or set --all_topics.")
-        if not os.path.exists(args.bag):
+        if not Path(args.bag).exists():
             raise file_interface.FileInterfaceException(
                 "File doesn't exist: {}".format(args.bag))
         logger.debug("Opening bag file " + args.bag)
@@ -153,28 +154,26 @@ def to_filestem(name: str, args: argparse.Namespace) -> str:
             name = name[1:]
         name = name.replace(':', '/')  # TF ID
         return name.replace('/', '_')
-    return os.path.splitext(os.path.basename(name))[0]
+    return Path(name).stem
 
 
 def to_topic_name(name: str, args: argparse.Namespace) -> str:
     if args.subcommand in ("bag", "bag2"):
         return name.replace(':', '/')
-    return '/' + os.path.splitext(os.path.basename(name))[0].replace(' ', '_')
+    return '/' + Path(name).stem.replace(' ', '_')
 
 
 def to_compact_name(name: str, args: argparse.Namespace,
                     latex_friendly=False) -> str:
     if not args.show_full_names and args.subcommand not in ("bag", "bag2"):
         # /some/super/long/path/that/nobody/cares/about/traj.txt  ->  traj
-        name = os.path.splitext(os.path.basename(name))[0]
+        name = Path(name).stem
     if latex_friendly:
         name = name.replace("_", "\\_")
     return name
 
 
 def run(args):
-    import sys
-
     import numpy as np
 
     import evo.core.lie_algebra as lie
@@ -193,6 +192,27 @@ def run(args):
     logger.debug(SEP)
 
     trajectories, ref_traj = load_trajectories(args)
+
+    if args.downsample:
+        logger.debug(SEP)
+        logger.info("Downsampling trajectories to max %s poses.",
+                    args.downsample)
+        for traj in trajectories.values():
+            traj.downsample(args.downsample)
+        if ref_traj:
+            ref_traj.downsample(args.downsample)
+
+    if args.motion_filter:
+        logger.debug(SEP)
+        distance_threshold = args.motion_filter[0]
+        angle_threshold = args.motion_filter[1]
+        logger.info(
+            "Filtering trajectories with motion filter "
+            "thresholds: %f m, %f deg", distance_threshold, angle_threshold)
+        for traj in trajectories.values():
+            traj.motion_filter(distance_threshold, angle_threshold, True)
+        if ref_traj:
+            ref_traj.motion_filter(distance_threshold, angle_threshold, True)
 
     if args.merge:
         if args.subcommand == "kitti":
@@ -262,6 +282,16 @@ def run(args):
             traj.transform(transform, right_mul=args.transform_right,
                            propagate=args.propagate_transform)
 
+    # Note: projection is done after potential alignment & transformation steps.
+    if args.project_to_plane:
+        plane = trajectory.Plane(args.project_to_plane)
+        logger.debug(SEP)
+        logger.debug("Projecting trajectories to %s plane.", plane.value)
+        for traj in trajectories.values():
+            traj.project(plane)
+        if ref_traj:
+            ref_traj.project(plane)
+
     for name, traj in trajectories.items():
         print_traj_info(to_compact_name(name, args), traj, args.verbose,
                         args.full_check)
@@ -274,6 +304,7 @@ def run(args):
         from evo.tools import plot
         import matplotlib.pyplot as plt
         import matplotlib.cm as cm
+        import seaborn as sns
 
         plot_collection = plot.PlotCollection("evo_traj - trajectory plot")
         fig_xyz, axarr_xyz = plt.subplots(3, sharex="col",
@@ -281,6 +312,7 @@ def run(args):
         fig_rpy, axarr_rpy = plt.subplots(3, sharex="col",
                                           figsize=tuple(SETTINGS.plot_figsize))
         fig_traj = plt.figure(figsize=tuple(SETTINGS.plot_figsize))
+        fig_speed = plt.figure()
 
         plot_mode = plot.PlotMode[args.plot_mode]
         length_unit = Unit(SETTINGS.plot_trajectory_length_unit)
@@ -318,6 +350,16 @@ def run(args):
                           label=short_traj_name,
                           alpha=SETTINGS.plot_reference_alpha,
                           start_timestamp=start_time)
+            if isinstance(ref_traj, trajectory.PoseTrajectory3D):
+                try:
+                    plot.speeds(fig_speed.gca(), ref_traj,
+                                style=SETTINGS.plot_reference_linestyle,
+                                color=SETTINGS.plot_reference_color,
+                                alpha=SETTINGS.plot_reference_alpha,
+                                label=short_traj_name)
+                except trajectory.TrajectoryException as error:
+                    logger.error(
+                        f"Can't plot speeds of {short_traj_name}: {error}")
         elif args.plot_relative_time:
             # Use lower bound timestamp as the 0 time if there's no reference.
             if len(trajectories) > 1:
@@ -331,10 +373,11 @@ def run(args):
         if SETTINGS.plot_multi_cmap.lower() != "none":
             cmap = getattr(cm, SETTINGS.plot_multi_cmap)
             cmap_colors = iter(cmap(np.linspace(0, 1, len(trajectories))))
+        color_palette = itertools.cycle(sns.color_palette())
 
         for name, traj in trajectories.items():
             if cmap_colors is None:
-                color = next(ax_traj._get_lines.prop_cycler)['color']
+                color = next(color_palette)
             else:
                 color = next(cmap_colors)
 
@@ -358,6 +401,16 @@ def run(args):
                           color, short_traj_name,
                           alpha=SETTINGS.plot_trajectory_alpha,
                           start_timestamp=start_time)
+            if isinstance(traj, trajectory.PoseTrajectory3D):
+                try:
+                    plot.speeds(fig_speed.gca(), traj,
+                                style=SETTINGS.plot_trajectory_linestyle,
+                                color=color,
+                                alpha=SETTINGS.plot_trajectory_alpha,
+                                label=short_traj_name)
+                except trajectory.TrajectoryException as error:
+                    logger.error(
+                        f"Can't plot speeds of {short_traj_name}: {error}")
             if not SETTINGS.plot_usetex:
                 fig_rpy.text(
                     0., 0.005, "euler_angle_sequence: {}".format(
@@ -367,8 +420,9 @@ def run(args):
             plot.ros_map(ax_traj, args.ros_map_yaml, plot_mode)
 
         plot_collection.add_figure("trajectories", fig_traj)
-        plot_collection.add_figure("xyz_view", fig_xyz)
-        plot_collection.add_figure("rpy_view", fig_rpy)
+        plot_collection.add_figure("xyz", fig_xyz)
+        plot_collection.add_figure("rpy", fig_rpy)
+        plot_collection.add_figure("speeds", fig_speed)
         if args.plot:
             plot_collection.show()
         if args.save_plot:

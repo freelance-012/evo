@@ -27,12 +27,12 @@ import logging
 import os
 import typing
 import zipfile
+from pathlib import Path
 
 import numpy as np
 from rosbags.rosbag1 import (Reader as Rosbag1Reader, Writer as Rosbag1Writer)
 from rosbags.rosbag2 import (Reader as Rosbag2Reader, Writer as Rosbag2Writer)
-from rosbags.serde import deserialize_cdr, ros1_to_cdr, serialize_cdr
-from rosbags.serde.serdes import cdr_to_ros1
+from rosbags.typesys import get_typestore, Stores
 
 from evo import EvoException
 import evo.core.lie_algebra as lie
@@ -40,6 +40,7 @@ import evo.core.transformations as tr
 from evo.core import result
 from evo.core.trajectory import PosePath3D, PoseTrajectory3D
 from evo.tools import user, tf_id
+from evo.tools._typing import PathStr, PathStrHandle
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ class FileInterfaceException(EvoException):
     pass
 
 
-def has_utf8_bom(file_path):
+def has_utf8_bom(file_path: PathStr) -> bool:
     """
     Checks if the given file starts with a UTF8 BOM
     wikipedia.org/wiki/Byte_order_mark
@@ -66,7 +67,7 @@ def has_utf8_bom(file_path):
         return not int(binascii.hexlify(f.read(3)), 16) ^ 0xEFBBBF
 
 
-def csv_read_matrix(file_path, delim=',', comment_str="#"):
+def csv_read_matrix(file_path: PathStrHandle, delim=',', comment_str="#"):
     """
     directly parse a csv-like file into a matrix
     :param file_path: path of csv file (or file handle)
@@ -74,12 +75,12 @@ def csv_read_matrix(file_path, delim=',', comment_str="#"):
     :param comment_str: string indicating a comment line to ignore
     :return: 2D list with raw data (string)
     """
-    if hasattr(file_path, 'read'):  # if file handle
+    if isinstance(file_path, io.IOBase):  # if file handle
         generator = (line for line in file_path
                      if not line.startswith(comment_str))
         reader = csv.reader(generator, delimiter=delim)
         mat = [row for row in reader]
-    else:
+    elif isinstance(file_path, (str, Path)):
         if not os.path.isfile(file_path):
             raise FileInterfaceException("csv file " + str(file_path) +
                                          " does not exist")
@@ -94,7 +95,7 @@ def csv_read_matrix(file_path, delim=',', comment_str="#"):
     return mat
 
 
-def read_tum_trajectory_file(file_path) -> PoseTrajectory3D:
+def read_tum_trajectory_file(file_path: PathStrHandle) -> PoseTrajectory3D:
     """
     parses trajectory file in TUM format (timestamp tx ty tz qx qy qz qw)
     :param file_path: the trajectory file path (or file handle)
@@ -119,7 +120,7 @@ def read_tum_trajectory_file(file_path) -> PoseTrajectory3D:
     return PoseTrajectory3D(xyz, quat, stamps)
 
 
-def write_tum_trajectory_file(file_path, traj: PoseTrajectory3D,
+def write_tum_trajectory_file(file_path: PathStrHandle, traj: PoseTrajectory3D,
                               confirm_overwrite: bool = False) -> None:
     """
     :param file_path: desired text file for trajectory (string or handle)
@@ -127,7 +128,7 @@ def write_tum_trajectory_file(file_path, traj: PoseTrajectory3D,
     :param confirm_overwrite: whether to require user interaction
            to overwrite existing files
     """
-    if isinstance(file_path, str) and confirm_overwrite:
+    if confirm_overwrite and isinstance(file_path, (str, Path)):
         if not user.check_and_confirm_overwrite(file_path):
             return
     if not isinstance(traj, PoseTrajectory3D):
@@ -143,7 +144,7 @@ def write_tum_trajectory_file(file_path, traj: PoseTrajectory3D,
         logger.info("Trajectory saved to: " + file_path)
 
 
-def read_kitti_poses_file(file_path) -> PosePath3D:
+def read_kitti_poses_file(file_path: PathStrHandle) -> PosePath3D:
     """
     parses pose file in KITTI format (first 3 rows of SE(3) matrix per line)
     :param file_path: the trajectory file path (or file handle)
@@ -169,7 +170,7 @@ def read_kitti_poses_file(file_path) -> PosePath3D:
     return PosePath3D(poses_se3=poses)
 
 
-def write_kitti_poses_file(file_path, traj: PosePath3D,
+def write_kitti_poses_file(file_path: PathStrHandle, traj: PosePath3D,
                            confirm_overwrite: bool = False) -> None:
     """
     :param file_path: desired text file for trajectory (string or handle)
@@ -177,7 +178,7 @@ def write_kitti_poses_file(file_path, traj: PosePath3D,
     :param confirm_overwrite: whether to require user interaction
            to overwrite existing files
     """
-    if isinstance(file_path, str) and confirm_overwrite:
+    if confirm_overwrite and isinstance(file_path, (str, Path)):
         if not user.check_and_confirm_overwrite(file_path):
             return
     # first 3 rows  of SE(3) matrix flattened
@@ -187,7 +188,7 @@ def write_kitti_poses_file(file_path, traj: PosePath3D,
         logger.info("Poses saved to: " + file_path)
 
 
-def read_euroc_csv_trajectory(file_path) -> PoseTrajectory3D:
+def read_euroc_csv_trajectory(file_path: PathStrHandle) -> PoseTrajectory3D:
     """
     parses ground truth trajectory from EuRoC MAV state estimate .csv
     :param file_path: <sequence>/mav0/state_groundtruth_estimate0/data.csv
@@ -237,6 +238,7 @@ def _get_xyz_quat_from_pose_or_odometry_msg(
     ]
     return xyz, quat
 
+
 def _get_xyz_quat_from_point_msg(
         msg) -> typing.Tuple[typing.List[float], typing.List[float]]:
     xyz = [msg.point.x, msg.point.y, msg.point.z]
@@ -274,17 +276,12 @@ def read_bag_trajectory(reader: typing.Union[Rosbag1Reader,
             "or rosbags.rosbags2.reader.Reader - "
             "rosbag.Bag() is not supported by evo anymore")
 
-    # TODO: Support TF also with ROS2 bags.
     if tf_id.check_id(topic):
-        if isinstance(reader, Rosbag1Reader):
-            # Use TfCache instead if it's a TF transform ID.
-            from evo.tools import tf_cache
-            tf_tree_cache = (tf_cache.instance(reader.__hash__())
-                             if cache_tf_tree else tf_cache.TfCache())
-            return tf_tree_cache.get_trajectory(reader, identifier=topic)
-        else:
-            raise FileInterfaceException(
-                "TF support for ROS2 bags is not implemented")
+        # Use TfCache instead if it's a TF transform ID.
+        from evo.tools import tf_cache
+        tf_tree_cache = (tf_cache.instance(reader.__hash__())
+                         if cache_tf_tree else tf_cache.TfCache())
+        return tf_tree_cache.get_trajectory(reader, identifier=topic)
 
     if topic not in reader.topics:
         raise FileInterfaceException("no messages for topic '" + topic +
@@ -309,17 +306,20 @@ def read_bag_trajectory(reader: typing.Union[Rosbag1Reader,
 
     stamps, xyz, quat = [], [], []
 
+    if isinstance(reader, Rosbag1Reader):
+        typestore = get_typestore(Stores.ROS1_NOETIC)
+    else:
+        typestore = get_typestore(Stores.LATEST)
     connections = [c for c in reader.connections if c.topic == topic]
     for connection, _, rawdata in reader.messages(
             connections=connections):  # type: ignore
         if isinstance(reader, Rosbag1Reader):
-            msg = deserialize_cdr(ros1_to_cdr(rawdata, connection.msgtype),
-                                  connection.msgtype)
+            msg = typestore.deserialize_ros1(rawdata, connection.msgtype)
         else:
-            msg = deserialize_cdr(rawdata, connection.msgtype)
+            msg = typestore.deserialize_cdr(rawdata, connection.msgtype)
         # Use the header timestamps (converted to seconds).
         # Note: msg/stamp is a rosbags type here, not native ROS.
-        t = msg.header.stamp
+        t = msg.header.stamp  # type: ignore
         stamps.append(t.sec + (t.nanosec * 1e-9))
         xyz_t, quat_t = get_xyz_quat(msg)
         xyz.append(xyz_t)
@@ -332,11 +332,10 @@ def read_bag_trajectory(reader: typing.Union[Rosbag1Reader,
     (connection, _, rawdata) = list(reader.messages(connections=connections))[0]  # type: ignore
     # yapf: enable
     if isinstance(reader, Rosbag1Reader):
-        first_msg = deserialize_cdr(ros1_to_cdr(rawdata, connection.msgtype),
-                                    connection.msgtype)
+        first_msg = typestore.deserialize_ros1(rawdata, connection.msgtype)
     else:
-        first_msg = deserialize_cdr(rawdata, connection.msgtype)
-    frame_id = first_msg.header.frame_id
+        first_msg = typestore.deserialize_cdr(rawdata, connection.msgtype)
+    frame_id = first_msg.header.frame_id  # type: ignore
     return PoseTrajectory3D(np.array(xyz), np.array(quat), np.array(stamps),
                             meta={"frame_id": frame_id})
 
@@ -349,11 +348,6 @@ def write_bag_trajectory(writer, traj: PoseTrajectory3D, topic_name: str,
     :param topic_name: the desired topic name for the trajectory
     :param frame_id: optional ROS frame_id
     """
-    from rosbags.typesys.types import (
-        geometry_msgs__msg__PoseStamped as PoseStamped, std_msgs__msg__Header
-        as Header, geometry_msgs__msg__Pose as Pose, geometry_msgs__msg__Point
-        as Position, geometry_msgs__msg__Quaternion as Quaternion,
-        builtin_interfaces__msg__Time as Time)
     if not isinstance(traj, PoseTrajectory3D):
         raise FileInterfaceException(
             "trajectory must be a PoseTrajectory3D object")
@@ -363,26 +357,45 @@ def write_bag_trajectory(writer, traj: PoseTrajectory3D, topic_name: str,
             "or rosbags.rosbags2.writer.Writer - "
             "rosbag.Bag() is not supported by evo anymore")
 
-    msgtype = PoseStamped.__msgtype__
-    connection = writer.add_connection(topic_name, msgtype)
+    if isinstance(writer, Rosbag1Writer):
+        typestore = get_typestore(Stores.ROS1_NOETIC)
+    else:
+        typestore = get_typestore(Stores.LATEST)
+    Time = typestore.types["builtin_interfaces/msg/Time"]
+    Header = typestore.types["std_msgs/msg/Header"]
+    Position = typestore.types["geometry_msgs/msg/Point"]
+    Quaternion = typestore.types["geometry_msgs/msg/Quaternion"]
+    Pose = typestore.types["geometry_msgs/msg/Pose"]
+    PoseStamped = typestore.types["geometry_msgs/msg/PoseStamped"]
+
+    msgtype = PoseStamped.__msgtype__  # type: ignore
+    connection = writer.add_connection(topic_name, msgtype,
+                                       typestore=typestore)
+
+    seq = 0
     for stamp, xyz, quat in zip(traj.timestamps, traj.positions_xyz,
                                 traj.orientations_quat_wxyz):
         sec = int(stamp // 1)
         nanosec = int((stamp - sec) * 1e9)
         time = Time(sec, nanosec)
-        header = Header(time, frame_id)
+        if isinstance(writer, Rosbag1Writer):
+            header = Header(seq, time, frame_id)
+            seq += 1
+        else:
+            header = Header(time, frame_id)
         position = Position(x=xyz[0], y=xyz[1], z=xyz[2])
         quaternion = Quaternion(w=quat[0], x=quat[1], y=quat[2], z=quat[3])
         pose = Pose(position, quaternion)
-        p = PoseStamped(header, pose)
-        serialized_msg = serialize_cdr(p, msgtype)
+        pose_stamped = PoseStamped(header, pose)
         if isinstance(writer, Rosbag1Writer):
-            serialized_msg = cdr_to_ros1(serialized_msg, msgtype)
+            serialized_msg = typestore.serialize_ros1(pose_stamped, msgtype)
+        else:
+            serialized_msg = typestore.serialize_cdr(pose_stamped, msgtype)
         writer.write(connection, int(stamp * 1e9), serialized_msg)
     logger.info("Saved geometry_msgs/PoseStamped topic: " + topic_name)
 
 
-def save_res_file(zip_path, result_obj: result.Result,
+def save_res_file(zip_path: PathStrHandle, result_obj: result.Result,
                   confirm_overwrite: bool = False) -> None:
     """
     save results to a zip file that can be deserialized with load_res_file()
@@ -391,10 +404,11 @@ def save_res_file(zip_path, result_obj: result.Result,
     :param confirm_overwrite: whether to require user interaction
            to overwrite existing files
     """
-    if isinstance(zip_path, str):
-        logger.debug("Saving results to " + zip_path + "...")
-    if confirm_overwrite and not user.check_and_confirm_overwrite(zip_path):
-        return
+    if isinstance(zip_path, (str, Path)):
+        logger.debug("Saving results to %s...", zip_path)
+        if confirm_overwrite and not user.check_and_confirm_overwrite(
+                zip_path):
+            return
     with zipfile.ZipFile(zip_path, 'w') as archive:
         archive.writestr("info.json", json.dumps(result_obj.info))
         archive.writestr("stats.json", json.dumps(result_obj.stats))
@@ -421,7 +435,8 @@ def save_res_file(zip_path, result_obj: result.Result,
             traj_buffer.close()
 
 
-def load_res_file(zip_path, load_trajectories: bool = False) -> result.Result:
+def load_res_file(zip_path: PathStrHandle,
+                  load_trajectories: bool = False) -> result.Result:
     """
     load contents of a result .zip file saved with save_res_file(...)
     :param zip_path: path to zip file
@@ -445,7 +460,7 @@ def load_res_file(zip_path, load_trajectories: bool = False) -> result.Result:
         for filename in np_files:
             with io.BytesIO(archive.read(filename)) as array_buffer:
                 array = np.load(array_buffer)
-                name = os.path.splitext(os.path.basename(filename))[0]
+                name = Path(filename).stem
                 result_obj.add_np_array(name, array)
         if load_trajectories:
             tum_files = [f for f in file_list if f.endswith(".tum")]
@@ -453,19 +468,19 @@ def load_res_file(zip_path, load_trajectories: bool = False) -> result.Result:
                 with io.TextIOWrapper(archive.open(filename,
                                                    mode='r')) as traj_buffer:
                     traj = read_tum_trajectory_file(traj_buffer)
-                    name = os.path.splitext(os.path.basename(filename))[0]
+                    name = Path(filename).stem
                     result_obj.add_trajectory(name, traj)
             kitti_files = [f for f in file_list if f.endswith(".kitti")]
             for filename in kitti_files:
                 with io.TextIOWrapper(archive.open(filename,
                                                    mode='r')) as path_buffer:
                     path = read_kitti_poses_file(path_buffer)
-                    name = os.path.splitext(os.path.basename(filename))[0]
+                    name = Path(filename).stem
                     result_obj.add_trajectory(name, path)
     return result_obj
 
 
-def load_transform_json(json_path) -> np.ndarray:
+def load_transform_json(json_path: PathStrHandle) -> np.ndarray:
     """
     load a transformation stored in xyz + quaternion format in a .json file,
     optionally with a "scale" field.
@@ -488,7 +503,7 @@ def load_transform_json(json_path) -> np.ndarray:
     return t
 
 
-def load_transform(file_path) -> np.ndarray:
+def load_transform(file_path: PathStr) -> np.ndarray:
     """
     Load a SE(3) or Sim(3) transformation from either
     - a binary .npy or a text file containing a 4x4 matrix,
