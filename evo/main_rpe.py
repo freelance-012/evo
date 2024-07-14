@@ -109,6 +109,7 @@ def rpe(traj_ref: PosePath3D, traj_est: PosePath3D,
         # Save times/distances of each calculated value.
         # Note: here the first index needs that was added before needs to be
         # ignored again as it's not relevant for the values (see above).
+        rpe_result.add_np_array("original_ts", traj_est.timestamps[1:])
         rpe_result.add_np_array("seconds_from_start", seconds_from_start[1:])
         rpe_result.add_np_array("timestamps", traj_est.timestamps[1:])
         rpe_result.add_np_array("distances_from_start", traj_ref.distances[1:])
@@ -131,7 +132,11 @@ def run(args: argparse.Namespace) -> None:
         logger.debug("main_parser config:\n{}".format(parser_str))
     logger.debug(SEP)
 
-    traj_ref, traj_est, ref_name, est_name = common.load_trajectories(args)
+    if(args.subcommand == "sfvo"):
+        traj_ref, traj_est, ref_name, est_name, nav_ts, nav_navigation_mode, nav_rtk_yaw, nav_flight_mode, nav_velocity, nav_reset_count, nav_height, vloc_ts, vloc_status, vloc_num_inliers, vloc_reset_count, vloc_height = common.load_sfvloc_trajectories(args)
+    else:
+        traj_ref, traj_est, ref_name, est_name = common.load_trajectories(args)
+
     pose_relation = common.get_pose_relation(args)
     delta_unit = common.get_delta_unit(args)
     change_unit = metrics.Unit(args.change_unit) if args.change_unit else None

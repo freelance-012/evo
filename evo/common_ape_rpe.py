@@ -44,6 +44,15 @@ def load_sfvloc_trajectories(
         traj_ref, nav_ts, nav_navigation_mode, nav_rtk_yaw, nav_flight_mode, nav_velocity, nav_reset_count, nav_height = file_interface.read_sf_imu_trajectory_file(args.ref_dir)
         traj_est, vloc_ts, vloc_status, vloc_num_inliers, vloc_reset_count, vloc_height = file_interface.read_sf_vloc_trajectory_file(args.est_dir)
         ref_name, est_name = os.path.join(args.ref_dir, "imu.txt"), os.path.join(args.est_dir, "vloc.txt")
+    elif args.subcommand == "sfvo":
+        traj_ref, nav_ts, nav_navigation_mode, nav_rtk_yaw, nav_flight_mode, nav_velocity, nav_reset_count, nav_height = file_interface.read_sf_imu_trajectory_file(args.ref_dir)
+        traj_est = file_interface.read_sf_vo_trajectory_file(args.est_dir)
+        ref_name, est_name = os.path.join(args.ref_dir, "imu.txt"), os.path.join(args.est_dir, "vo.txt")
+        vloc_ts = []
+        vloc_status = []
+        vloc_num_inliers = []
+        vloc_reset_count = []
+        vloc_height = []
     else:
         raise KeyError("unknown sub-command: {}".format(args.subcommand))
     

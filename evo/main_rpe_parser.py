@@ -64,8 +64,8 @@ def parser() -> argparse.ArgumentParser:
         help="the axes for plot projection",
         choices=["xy", "xz", "yx", "yz", "zx", "zy", "xyz"])
     output_opts.add_argument(
-        "--plot_x_dimension", choices=["index", "seconds",
-                                       "distances"], default="seconds",
+        "--plot_x_dimension", choices=["index", "seconds", "original_ts",
+                                       "distances"], default="original_ts",
         help="dimension that is used on the x-axis of the raw value plot"
         "(default: seconds, or index if no timestamps are present)")
     output_opts.add_argument(
@@ -128,6 +128,13 @@ def parser() -> argparse.ArgumentParser:
     tum_parser.add_argument("ref_file", help="reference trajectory file")
     tum_parser.add_argument("est_file", help="estimated trajectory file")
 
+    sfvo_parser = sub_parsers.add_parser(
+        "sfvo", parents=[shared_parser],
+        description="{} for sf vo trajectory files - {}".format(basic_desc, lic))
+    sfvo_parser.add_argument('ref_dir', help="reference trajectory directory")
+    sfvo_parser.add_argument('est_dir', help="estimated trajectory directory")
+
+
     euroc_parser = sub_parsers.add_parser(
         "euroc", parents=[shared_parser],
         description="{} for EuRoC MAV files - {}".format(basic_desc, lic))
@@ -153,7 +160,7 @@ def parser() -> argparse.ArgumentParser:
 
     # Add time-sync options to parser of trajectory formats.
     for trajectory_parser in {
-            bag_parser, bag2_parser, euroc_parser, tum_parser
+            bag_parser, bag2_parser, euroc_parser, tum_parser, sfvo_parser
     }:
         trajectory_parser.add_argument(
             "--t_max_diff", type=float, default=0.01,
