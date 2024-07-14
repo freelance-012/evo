@@ -257,24 +257,33 @@ def read_sf_imu_trajectory_file(ref_dir) -> PosePath3D:
     except ValueError:
         raise FileInterfaceException(error_msg)
 
-    stamps = mat[:, 0]  # n x 1
-    # xyz = mat[:, 4:7]  # n x 3
-    ypr = mat[:, 7:10]  # n x 3
-    geodetic = mat[:, 16:19]
-    print(geodetic)
-    ned = np.empty((geodetic.shape[0], 3))
-    for i in range(len(geodetic)):
-        ned[i, :] = np.array(pymap3d.geodetic2ned(geodetic[i, 0], geodetic[i, 1], geodetic[i, 2], home_point_mat[0, 1], home_point_mat[0, 0], home_point_mat[0, 2], ell=pymap3d.Ellipsoid.from_name("wgs84"), deg=True))
+    nav_ts = mat[:, 0]  # n x 1
+    nav_status = mat[:, 2].astype(int)
+    nav_navigation_mode = np.bitwise_and(nav_status, 15)
+    nav_rtk_yaw = np.bitwise_and(nav_status, 22)
+    nav_flight_mode = mat[:, 3]
+    # nav_pos = mat[:, 4:7]  # n x 3
+    nav_euler = mat[:, 7:10]  # n x 3
+    nav_velocity = mat[:, 10:13]
+    nav_reset_count = mat[:, 13:16]
+    nav_geodetic = mat[:, 16:19]
+    nav_height = mat[:, 20]
+    print(nav_geodetic)
+    ned = np.empty((nav_geodetic.shape[0], 3))
+    for i in range(len(nav_geodetic)):
+        ned[i, :] = np.array(pymap3d.geodetic2ned(nav_geodetic[i, 0], nav_geodetic[i, 1], nav_geodetic[i, 2], home_point_mat[0, 1], home_point_mat[0, 0], home_point_mat[0, 2], ell=pymap3d.Ellipsoid.from_name("wgs84"), deg=True))
 
     print(ned)
 
-    quat = transform.Rotation.from_euler("ZYX", ypr, False).as_quat()
+    quat = transform.Rotation.from_euler("ZYX", nav_euler, False).as_quat()
     quat = np.roll(quat, 1, axis=1)  # shift 1 column -> w in front column
     print(quat)
     if not hasattr(imu_file_path, 'read'):  # if not file handle
         logger.debug("Loaded {} stamps and poses from: {}".format(
-            len(stamps), imu_file_path))
-    return PoseTrajectory3D(ned, quat, stamps)
+            len(nav_ts), imu_file_path))
+    
+
+    return PoseTrajectory3D(ned, quat, nav_ts), nav_ts, nav_navigation_mode, nav_rtk_yaw, nav_flight_mode, nav_velocity, nav_reset_count, nav_height
 
 
 def read_sf_vloc_trajectory_file(est_dir) -> PosePath3D:
@@ -294,24 +303,42 @@ def read_sf_vloc_trajectory_file(est_dir) -> PosePath3D:
     except ValueError:
         raise FileInterfaceException(error_msg)
     
-    print(mat[:, 1])
+    vloc_ts = mat[:, 0]
+    vloc_status = mat[:, 1]
+    vloc_num_inliers = mat[:, 2]
+    vloc_reset_count = mat[:, 3]
+    vloc_pos = mat[:, 4:7]  # n x 3
+    vloc_euler = mat[:, 7:10]  # n x 3
+    vloc_latitude = mat[:, 10]
+    vloc_longitude = mat[:, 11]
+    vloc_height = mat[:, 12]
 
-    valid_mat = mat[mat[:, 1] == 3]
-    print(valid_mat[:, 0])
-    stamps = valid_mat[:, 0]  # n x 1
-    xyz = valid_mat[:, 4:7]  # n x 3
-    ypr = valid_mat[:, 7:10]  # n x 3
-    quat = transform.Rotation.from_euler("ZYX", ypr, True).as_quat()
+
+    valid_mat = mat[vloc_status > 1]
+
+
+    vloc_valid_ts = valid_mat[:, 0]  # n x 1
+    # vloc_status = valid_mat[:, 1]
+    # vloc_num_inliers = valid_mat[:, 2]
+    # vloc_reset_count = valid_mat[:, 3]
+    vloc_pos = valid_mat[:, 4:7]  # n x 3
+    vloc_euler = valid_mat[:, 7:10]  # n x 3
+    # vloc_latitude = valid_mat[10]
+    # vloc_longitude = valid_mat[11]
+    # vloc_height = valid_mat[12]
+
+    quat = transform.Rotation.from_euler("ZYX", vloc_euler, True).as_quat()
     # TODO transform fome imu to body
     calib_file_path = os.path.join(est_dir, "calib_raw.yaml")
     T_i_b, T_b_c = read_extrinsics(calib_file_path)
-    transform_to_body(xyz, quat, T_i_b)
+    transform_to_body(vloc_pos, quat, T_i_b)
 
     quat = np.roll(quat, 1, axis=1)  # shift 1 column -> w in front column
     if not hasattr(vloc_file_path, 'read'):  # if not file handle
         logger.debug("Loaded {} stamps and poses from: {}".format(
-            len(stamps), vloc_file_path))
-    return PoseTrajectory3D(xyz, quat, stamps)
+            len(vloc_valid_ts), vloc_file_path))
+        
+    return PoseTrajectory3D(vloc_pos, quat, vloc_valid_ts), vloc_ts, vloc_status, vloc_num_inliers, vloc_reset_count, vloc_height
 
 
 def read_sf_vo_trajectory_file(est_dir) -> PosePath3D:

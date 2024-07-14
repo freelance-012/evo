@@ -114,12 +114,12 @@ def run(args: argparse.Namespace) -> None:
         logger.debug("main_parser config:\n{}".format(parser_str))
     logger.debug(SEP)
 
-    # if(args.subcommand == "sfvloc"):
-    #     traj_ref, traj_vloc_est, traj_vo_est, ref_name, est_vloc_name, est_vo_name = common.load_sfvloc_trajectories(args)
-    # else:
-        # traj_ref, traj_est, ref_name, est_name = common.load_trajectories(args)
+    if(args.subcommand == "sfvloc"):
+        traj_ref, traj_est, ref_name, est_name, nav_ts, nav_navigation_mode, nav_rtk_yaw, nav_flight_mode, nav_velocity, nav_reset_count, nav_height, vloc_ts, vloc_status, vloc_num_inliers, vloc_reset_count, vloc_height = common.load_sfvloc_trajectories(args)
+    else:
+        traj_ref, traj_est, ref_name, est_name = common.load_trajectories(args)
 
-    traj_ref, traj_est, ref_name, est_name = common.load_trajectories(args)
+    # traj_ref, traj_est, ref_name, est_name = common.load_trajectories(args)
 
     traj_ref_full = None
     if args.plot_full_ref:
@@ -150,9 +150,26 @@ def run(args: argparse.Namespace) -> None:
                  est_name=est_name, change_unit=change_unit)
 
     if args.plot or args.save_plot or args.serialize_plot:
-        common.plot_result(args, result, traj_ref,
-                           result.trajectories[est_name],
-                           traj_ref_full=traj_ref_full)
+        if(args.subcommand == "sfvloc"):    
+            common.plot_sfvloc_result(args, result, traj_ref,
+                            result.trajectories[est_name],
+                            nav_ts,
+                            nav_navigation_mode, 
+                            nav_rtk_yaw, 
+                            nav_flight_mode, 
+                            nav_velocity, 
+                            nav_reset_count, 
+                            nav_height, 
+                            vloc_ts,
+                            vloc_status, 
+                            vloc_num_inliers, 
+                            vloc_reset_count, 
+                            vloc_height,
+                            traj_ref_full=traj_ref_full)
+        else:
+            common.plot_result(args, result, traj_ref,
+                            result.trajectories[est_name],
+                            traj_ref_full=traj_ref_full)
 
     if args.save_results:
         logger.debug(SEP)

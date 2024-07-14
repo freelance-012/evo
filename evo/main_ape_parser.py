@@ -46,7 +46,7 @@ def parser() -> argparse.ArgumentParser:
     output_opts.add_argument(
         "--plot_mode", default=SETTINGS.plot_mode_default,
         help="the axes for plot projection",
-        choices=["xy", "xz", "yx", "yz", "zx", "zy", "xyz"])
+        choices=["xy", "xz", "yx", "yz", "zx", "zy", "xyz", "all"])
     output_opts.add_argument(
         "--plot_x_dimension", choices=["index", "seconds", "original_ts"
                                        "distances"], default="original_ts",

@@ -21,6 +21,7 @@ along with evo.  If not, see <http://www.gnu.org/licenses/>.
 import argparse
 import logging
 import typing
+import os
 
 from evo.core.metrics import PoseRelation, Unit
 from evo.core.result import Result
@@ -37,18 +38,16 @@ def load_sfvloc_trajectories(
     from evo.tools import file_interface
 
     traj_ref: typing.Union[PosePath3D, PoseTrajectory3D]
-    traj_vloc_est: typing.Union[PosePath3D, PoseTrajectory3D]
-    traj_vo_est: typing.Union[PosePath3D, PoseTrajectory3D]
+    traj_est: typing.Union[PosePath3D, PoseTrajectory3D]
 
     if args.subcommand == "sfvloc":
-            traj_ref = file_interface.read_sf_imu_trajectory_file(args.ref_file)
-            traj_vloc_est = file_interface.read_sf_vloc_trajectory_file(args.est_vloc_file)
-            traj_vo_est = file_interface.read_sf_vo_trajectory_file(args.est_vo_file)
-            ref_name, est_vloc_name, est_vo_name = args.ref_file, args.est_vloc_file, args.est_vo_file
+        traj_ref, nav_ts, nav_navigation_mode, nav_rtk_yaw, nav_flight_mode, nav_velocity, nav_reset_count, nav_height = file_interface.read_sf_imu_trajectory_file(args.ref_dir)
+        traj_est, vloc_ts, vloc_status, vloc_num_inliers, vloc_reset_count, vloc_height = file_interface.read_sf_vloc_trajectory_file(args.est_dir)
+        ref_name, est_name = os.path.join(args.ref_dir, "imu.txt"), os.path.join(args.est_dir, "vloc.txt")
     else:
         raise KeyError("unknown sub-command: {}".format(args.subcommand))
     
-    return traj_ref, traj_vloc_est, traj_vo_est, ref_name, est_vloc_name, est_vo_name
+    return traj_ref, traj_est, ref_name, est_name, nav_ts, nav_navigation_mode, nav_rtk_yaw, nav_flight_mode, nav_velocity, nav_reset_count, nav_height, vloc_ts, vloc_status, vloc_num_inliers, vloc_reset_count, vloc_height
 
 
 def load_trajectories(
@@ -74,7 +73,7 @@ def load_trajectories(
     elif args.subcommand == "sfvloc":
         traj_ref = file_interface.read_sf_imu_trajectory_file(args.ref_dir)
         traj_est = file_interface.read_sf_vloc_trajectory_file(args.est_dir)
-        ref_name, est_name = args.ref_dir, args.est_dir
+        ref_name, est_name = os.path.join(args.ref_dir, "imu.txt"), os.path.join(args.est_dir, "vloc.txt")
     elif args.subcommand in ("bag", "bag2"):
         import os
         logger.debug("Opening bag file " + args.bag)
@@ -131,6 +130,261 @@ def get_delta_unit(args: argparse.Namespace) -> Unit:
     elif args.delta_unit == "m":
         delta_unit = Unit.meters
     return delta_unit
+
+
+
+def plot_sfvloc_result(args: argparse.Namespace, result: Result, traj_ref: PosePath3D,
+                traj_est: PosePath3D,
+                nav_ts,
+                nav_navigation_mode, 
+                nav_rtk_yaw, 
+                nav_flight_mode, 
+                nav_velocity, 
+                nav_reset_count, 
+                nav_height, 
+                vloc_ts,
+                vloc_status, 
+                vloc_num_inliers, 
+                vloc_reset_count, 
+                vloc_height,
+                traj_ref_full: typing.Optional[PosePath3D] = None) -> None:
+    
+
+    from evo.tools import plot
+    from evo.tools.settings import SETTINGS
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    logger.debug(SEP)
+    logger.debug("Plotting sfvloc results... ")
+
+    if (args.plot_x_dimension == "distances"
+            and "distances_from_start" in result.np_arrays):
+        x_array = result.np_arrays["distances_from_start"]
+        x_label = "$d$ (m)"
+    elif (args.plot_x_dimension == "seconds"
+          and "seconds_from_start" in result.np_arrays):
+        x_array = result.np_arrays["seconds_from_start"]
+        x_label = "$t$ (s)"
+    elif (args.plot_x_dimension == "original_ts"
+          and "original_ts" in result.np_arrays):
+        x_array = result.np_arrays["original_ts"]
+        x_label = "$t$ (s)"
+    else:
+        x_array = None
+        x_label = "index"
+
+
+    # Plot the raw metric values.
+    fig1 = plt.figure(figsize=SETTINGS.plot_figsize)
+
+    plot.error_array(
+        fig1.gca(), result.np_arrays["error_array"], x_array=x_array,
+        statistics={
+            s: result.stats[s]
+            for s in SETTINGS.plot_statistics if s not in ("min", "max")
+        }, name=result.info["label"], title=result.info["title"],
+        xlabel=x_label)
+
+    plot_collection = plot.PlotCollection(result.info["title"])
+    plot_collection.add_figure("raw", fig1)
+
+    
+    # Plot the values color-mapped onto the trajectory.
+    if(args.plot_mode == "all"):
+        plot_mode = plot.PlotMode("xyz")
+        fig_xyz = plot_color_map(args, plot_mode, traj_ref, traj_ref_full, traj_est, result)
+        plot_mode = plot.PlotMode("xz")
+        fig_xz = plot_color_map(args, plot_mode, traj_ref, traj_ref_full, traj_est, result)
+        plot_mode = plot.PlotMode("yz")
+        fig_yz = plot_color_map(args, plot_mode, traj_ref, traj_ref_full, traj_est, result)
+        plot_mode = plot.PlotMode("xy")
+        fig_xy = plot_color_map(args, plot_mode, traj_ref, traj_ref_full, traj_est, result)
+
+        plot_collection.add_figure("fig_xyz", fig_xyz)
+        plot_collection.add_figure("fig_xz", fig_xz)
+        plot_collection.add_figure("fig_yz", fig_yz)
+        plot_collection.add_figure("fig_xy", fig_xy)
+    else:
+        plot_mode = plot.PlotMode(args.plot_mode)
+        fig2 = plot_color_map(args, plot_mode, traj_ref, traj_ref_full, traj_est, result)
+        plot_collection.add_figure(args.plot_mode, fig2)
+
+
+    # Plot status of nav and vloc
+
+    fig_vloc_status, axarr_vloc_status = plt.subplots(1, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    # plot.sfvloc_vloc_status()
+    plot.sfvloc_state_info(
+        axarr=axarr_vloc_status, subplots_num=1, ylabels=["status"],
+        info_array=vloc_status, x_array=vloc_ts, 
+        title="status",
+        xlabel=x_label)
+    plot_collection.add_figure("vloc_status", fig_vloc_status)
+
+
+    fig_vloc_num_inliers, axarr_vloc_num_inliers = plt.subplots(1, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    # plot.sfvloc_vloc_num_inliers()
+    plot.sfvloc_state_info(
+        axarr=axarr_vloc_num_inliers, subplots_num=1, ylabels=["num_inliers"],
+        info_array=vloc_num_inliers, x_array=vloc_ts, 
+        title="num_inliers",
+        xlabel=x_label)
+    plot_collection.add_figure("vloc_num_inliers", fig_vloc_num_inliers)
+
+
+
+    fig_vloc_reset_count, axarr_vloc_reset_count = plt.subplots(1, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    # plot.sfvloc_vloc_reset_count()
+    plot.sfvloc_state_info(
+        axarr=axarr_vloc_reset_count, subplots_num=1, ylabels=["reset_count"],
+        info_array=vloc_reset_count, x_array=vloc_ts, 
+        title="reset_count",
+        xlabel=x_label)
+    plot_collection.add_figure("vloc_reset_count", fig_vloc_reset_count)
+
+
+    fig_nav_mode, axarr_nav_mode = plt.subplots(1, sharex="col",
+                                            figsize=tuple(SETTINGS.plot_figsize))
+    plot.sfvloc_state_info(
+        axarr=axarr_nav_mode, subplots_num=1, ylabels=["navi_mode"], 
+        info_array=nav_navigation_mode, x_array=nav_ts,
+        title="navi_mode",
+        xlabel=x_label)
+    plot_collection.add_figure("navi_mode", fig_nav_mode)
+
+
+    fig_nav_rtk_yaw, axarr_nav_rtk_yaw = plt.subplots(1, sharex="col",
+                                            figsize=tuple(SETTINGS.plot_figsize))
+    # plot.sfvloc_nav_rtk_yaw()
+    plot.sfvloc_state_info(
+        axarr=axarr_nav_rtk_yaw, subplots_num=1, ylabels=["rtk_yaw"], 
+        info_array=nav_rtk_yaw, x_array=nav_ts,
+        title="rtk_yaw",
+        xlabel=x_label)
+    plot_collection.add_figure("nav_rtk_yaw", fig_nav_rtk_yaw)
+
+    fig_nav_flight_mode, axarr_nav_flight_mode = plt.subplots(1, sharex="col",
+                                            figsize=tuple(SETTINGS.plot_figsize))
+    # plot.sfvloc_nav_flight_mode()
+    plot.sfvloc_state_info(
+        axarr=axarr_nav_flight_mode, subplots_num=1, ylabels=["flight_mode"], 
+        info_array=nav_flight_mode, x_array=nav_ts,
+        title="flight_mode",
+        xlabel=x_label)
+    plot_collection.add_figure("nav_flight_mode", fig_nav_flight_mode)
+    
+
+    fig_nav_vel, axarr_nav_velocity = plt.subplots(3, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    plot.sfvloc_state_info(
+        axarr=axarr_nav_velocity, subplots_num=3, ylabels=["Vx", "Vy", "Vz"], 
+        info_array=nav_velocity, x_array=nav_ts,
+        title="velocity",
+        xlabel=x_label)
+    plot_collection.add_figure("nav_velocity", fig_nav_vel)
+
+
+    fig_nav_reset_count, axarr_nav_reset_count = plt.subplots(3, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    plot.sfvloc_state_info(
+        axarr=axarr_nav_reset_count, subplots_num=3, ylabels=["pos_reset", "alti_reset", "head_reset"],
+        info_array=nav_reset_count, x_array=nav_ts,
+        title="reset_cnt", 
+        xlabel=x_label)
+    plot_collection.add_figure("nav_reset_cnt", fig_nav_reset_count)
+    
+
+    fig_height, axarr_height = plt.subplots(1, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    plot.sfvloc_state_info(
+        axarr=axarr_height, subplots_num=1, ylabels=["radar"],
+        info_array=nav_height, x_array=nav_ts, 
+        title="radar",
+        xlabel=x_label)
+    plot_collection.add_figure("nav_height", fig_height)
+
+
+    fig_vloc_height, axarr_vloc_height = plt.subplots(1, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    plot.sfvloc_state_info(
+        axarr=axarr_vloc_height, subplots_num=1, ylabels=["height"],
+        info_array=vloc_height, x_array=vloc_ts,
+        title="height", 
+        xlabel=x_label)
+    plot_collection.add_figure("vloc_height", fig_vloc_height)
+
+
+
+
+
+    if args.plot:
+        plot_collection.show()
+    if args.save_plot:
+        plot_collection.export(args.save_plot,
+                               confirm_overwrite=not args.no_warnings)
+    if args.serialize_plot:
+        logger.debug(SEP)
+        plot_collection.serialize(args.serialize_plot,
+                                  confirm_overwrite=not args.no_warnings)
+    plot_collection.close()
+
+
+def plot_status():
+    None
+
+
+def plot_color_map(args, plot_mode, traj_ref, traj_ref_full, traj_est, result):
+
+    from evo.tools import plot
+    from evo.tools.settings import SETTINGS
+    import matplotlib.pyplot as plt
+
+    fig2 = plt.figure(figsize=SETTINGS.plot_figsize)
+
+    ax = plot.prepare_axis(
+        fig2, plot_mode,
+        length_unit=Unit(SETTINGS.plot_trajectory_length_unit))
+
+    plot.traj(ax, plot_mode, traj_ref_full if traj_ref_full else traj_ref,
+              style=SETTINGS.plot_reference_linestyle,
+              color=SETTINGS.plot_reference_color, label='reference',
+              alpha=SETTINGS.plot_reference_alpha,
+              plot_start_end_markers=SETTINGS.plot_start_end_markers)
+    plot.draw_coordinate_axes(ax, traj_ref, plot_mode,
+                              SETTINGS.plot_reference_axis_marker_scale)
+
+    if args.plot_colormap_min is None:
+        args.plot_colormap_min = result.stats["min"]
+    if args.plot_colormap_max is None:
+        args.plot_colormap_max = result.stats["max"]
+    if args.plot_colormap_max_percentile is not None:
+        args.plot_colormap_max = np.percentile(
+            result.np_arrays["error_array"], args.plot_colormap_max_percentile)
+
+    plot.traj_colormap(ax, traj_est, result.np_arrays["error_array"],
+                       plot_mode, min_map=args.plot_colormap_min,
+                       max_map=args.plot_colormap_max,
+                       title=result.info["title"],
+                       plot_start_end_markers=SETTINGS.plot_start_end_markers)
+    plot.draw_coordinate_axes(ax, traj_est, plot_mode,
+                              SETTINGS.plot_axis_marker_scale)
+    if args.ros_map_yaml:
+        plot.ros_map(ax, args.ros_map_yaml, plot_mode)
+    if SETTINGS.plot_pose_correspondences:
+        plot.draw_correspondence_edges(
+            ax, traj_est, traj_ref, plot_mode,
+            style=SETTINGS.plot_pose_correspondences_linestyle,
+            color=SETTINGS.plot_reference_color,
+            alpha=SETTINGS.plot_reference_alpha)
+
+    fig2.axes.append(ax)
+    return fig2
+
 
 
 def plot_result(args: argparse.Namespace, result: Result, traj_ref: PosePath3D,

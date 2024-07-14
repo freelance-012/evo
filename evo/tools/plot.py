@@ -853,3 +853,27 @@ def ros_map(
         ax.invert_xaxis()
     if SETTINGS.plot_invert_yaxis:
         ax.invert_yaxis()
+
+
+def sfvloc_state_info(axarr: plt.Axes, subplots_num: int, ylabels: ListOrArray, info_array: ListOrArray,
+                x_array: typing.Optional[ListOrArray] = None, color: str = 'grey',
+                title: str = "", xlabel: str = "index",
+                linestyle: str = "-"):
+
+    if(subplots_num>1):
+        for i in range(0, subplots_num):
+            axarr[i].plot(x_array, info_array[:, i], linestyle=linestyle, color=color)
+            axarr[i].set_ylabel(ylabels[i])
+
+        axarr[subplots_num-1].set_xlabel(xlabel)
+        
+        axarr[0].set_title(title)
+
+    else:
+        if x_array is not None:
+            axarr.plot(x_array, info_array, linestyle=linestyle)
+        else:
+            axarr.plot(info_array, linestyle=linestyle)
+            
+        plt.xlabel(xlabel)
+        plt.title(title)
