@@ -31,6 +31,26 @@ logger = logging.getLogger(__name__)
 SEP = "-" * 80  # separator line
 
 
+def load_sfvloc_trajectories(
+        args: argparse.Namespace
+) -> typing.Tuple[PosePath3D, PosePath3D, PosePath3D, str, str, str]:
+    from evo.tools import file_interface
+
+    traj_ref: typing.Union[PosePath3D, PoseTrajectory3D]
+    traj_vloc_est: typing.Union[PosePath3D, PoseTrajectory3D]
+    traj_vo_est: typing.Union[PosePath3D, PoseTrajectory3D]
+
+    if args.subcommand == "sfvloc":
+            traj_ref = file_interface.read_sf_imu_trajectory_file(args.ref_file)
+            traj_vloc_est = file_interface.read_sf_vloc_trajectory_file(args.est_vloc_file)
+            traj_vo_est = file_interface.read_sf_vo_trajectory_file(args.est_vo_file)
+            ref_name, est_vloc_name, est_vo_name = args.ref_file, args.est_vloc_file, args.est_vo_file
+    else:
+        raise KeyError("unknown sub-command: {}".format(args.subcommand))
+    
+    return traj_ref, traj_vloc_est, traj_vo_est, ref_name, est_vloc_name, est_vo_name
+
+
 def load_trajectories(
     args: argparse.Namespace
 ) -> typing.Tuple[PosePath3D, PosePath3D, str, str]:
@@ -51,6 +71,10 @@ def load_trajectories(
         traj_ref = file_interface.read_euroc_csv_trajectory(args.state_gt_csv)
         traj_est = file_interface.read_tum_trajectory_file(args.est_file)
         ref_name, est_name = args.state_gt_csv, args.est_file
+    elif args.subcommand == "sfvloc":
+        traj_ref = file_interface.read_sf_imu_trajectory_file(args.ref_dir)
+        traj_est = file_interface.read_sf_vloc_trajectory_file(args.est_dir)
+        ref_name, est_name = args.ref_dir, args.est_dir
     elif args.subcommand in ("bag", "bag2"):
         import os
         logger.debug("Opening bag file " + args.bag)
@@ -131,6 +155,10 @@ def plot_result(args: argparse.Namespace, result: Result, traj_ref: PosePath3D,
     elif (args.plot_x_dimension == "seconds"
           and "seconds_from_start" in result.np_arrays):
         x_array = result.np_arrays["seconds_from_start"]
+        x_label = "$t$ (s)"
+    elif (args.plot_x_dimension == "original_ts"
+          and "original_ts" in result.np_arrays):
+        x_array = result.np_arrays["original_ts"]
         x_label = "$t$ (s)"
     else:
         x_array = None

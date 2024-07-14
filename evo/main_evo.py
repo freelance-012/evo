@@ -56,6 +56,7 @@ Tools:
 
 
 def main() -> None:
+    print("[sgx][enter main_evo::main()]")
     import sys
     import argparse
     import argcomplete

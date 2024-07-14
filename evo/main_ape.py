@@ -91,6 +91,7 @@ def ape(traj_ref: PosePath3D, traj_est: PosePath3D,
     if isinstance(traj_est, PoseTrajectory3D):
         seconds_from_start = np.array(
             [t - traj_est.timestamps[0] for t in traj_est.timestamps])
+        ape_result.add_np_array("original_ts", traj_est.timestamps)
         ape_result.add_np_array("seconds_from_start", seconds_from_start)
         ape_result.add_np_array("timestamps", traj_est.timestamps)
         ape_result.add_np_array("distances_from_start", traj_ref.distances)
@@ -106,11 +107,17 @@ def ape(traj_ref: PosePath3D, traj_est: PosePath3D,
 def run(args: argparse.Namespace) -> None:
     log.configure_logging(args.verbose, args.silent, args.debug,
                           local_logfile=args.logfile)
+    logger.debug("[sgx]main_ape::run")
     if args.debug:
         from pprint import pformat
         parser_str = pformat({arg: getattr(args, arg) for arg in vars(args)})
         logger.debug("main_parser config:\n{}".format(parser_str))
     logger.debug(SEP)
+
+    # if(args.subcommand == "sfvloc"):
+    #     traj_ref, traj_vloc_est, traj_vo_est, ref_name, est_vloc_name, est_vo_name = common.load_sfvloc_trajectories(args)
+    # else:
+        # traj_ref, traj_est, ref_name, est_name = common.load_trajectories(args)
 
     traj_ref, traj_est, ref_name, est_name = common.load_trajectories(args)
 

@@ -27,6 +27,8 @@ import logging
 import os
 import typing
 import zipfile
+import scipy.spatial.transform as transform
+import pymap3d
 
 import numpy as np
 from rosbags.rosbag1 import (Reader as Rosbag1Reader, Writer as Rosbag1Writer)
@@ -92,6 +94,46 @@ def csv_read_matrix(file_path, delim=',', comment_str="#"):
             reader = csv.reader(generator, delimiter=delim)
             mat = [row for row in reader]
     return mat
+
+
+def read_extrinsics(calib_file_path):
+    # TODO
+
+    T_b_i = np.array([
+        [1.0, 0.0, 0.0, 0.06],
+        [0.0, 1.0, 0.0, -0.22], 
+        [0.0, 0.0, 1.0, 0.24], 
+        [0.0, 0.0, 0.0, 1.0]
+    ])
+    T_c_i = np.array([
+        [-0.9998775979467093, -0.0006085712922001444, -0.015633897956088386, 0.0749370214709683], 
+        [0.0004991215860598248, -0.9999753489295139, 0.00700374263801777, -0.0029486613898941725],
+        [-0.015637774840475353, 0.006995082149594015, 0.9998532536446333, 0.0028581994316910853], 
+        [0.0, 0.0, 0.0, 1.0]
+    ])
+    
+    print(T_b_i)
+    T_i_b = np.linalg.inv(T_b_i)
+    print(T_i_b)
+
+    T_b_c = np.dot(T_b_i, np.linalg.inv(T_c_i))
+
+    return T_i_b, T_b_c
+
+
+def transform_to_body(xyz, quat, T_i_b):
+    R_i_b = T_i_b[:3, :3]
+    P_i_b = T_i_b[:3, 3]
+
+    for i in range(len(quat)):
+        R_w_i = transform.Rotation.from_quat(quat[i]).as_matrix()
+        P_w_i = xyz[i]
+        R_w_b = np.dot(R_w_i, R_i_b)
+        P_w_b = np.dot(R_w_i, P_i_b) + P_w_i
+
+        quat[i] = transform.Rotation.from_matrix(R_w_b).as_quat()
+        xyz[i] = P_w_b
+    
 
 
 def read_tum_trajectory_file(file_path) -> PoseTrajectory3D:
@@ -185,6 +227,120 @@ def write_kitti_poses_file(file_path, traj: PosePath3D,
     np.savetxt(file_path, poses_flat, delimiter=' ')
     if isinstance(file_path, str):
         logger.info("Poses saved to: " + file_path)
+
+def read_sf_imu_trajectory_file(ref_dir) -> PosePath3D:
+    """
+    parses trajectory file in sf imu format (ts imu.ts status flight_mode tx ty tz yaw pitch roll vx vy vz reset_count[0] reset_count[1] reset_count[2] latitude longitude altitude altitude_msl height)
+    :param ref_dir: the trajectory directory(or file handle)
+    :return: trajectory.PoseTrajectory3D object
+    """
+    imu_file_path = os.path.join(ref_dir, "imu.txt")
+    raw_mat = csv_read_matrix(imu_file_path, delim=" ", comment_str="#")
+    error_msg = ("sf imu trajectory files must have 21 entries per row "
+                 "and no trailing delimiter at the end of the rows (space)")
+    if not raw_mat or (len(raw_mat) > 0 and len(raw_mat[0]) != 21):
+        raise FileInterfaceException(error_msg)
+    try:
+        mat = np.array(raw_mat).astype(float)
+    except ValueError:
+        raise FileInterfaceException(error_msg)
+    
+    home_point_file_path = os.path.join(ref_dir, "home_point.txt")
+    home_point_mat = csv_read_matrix(home_point_file_path, delim=' ', comment_str="#")
+    error_msg = ("sf home point files must have 3 entries per row "
+                 "and no trailing delimiter at the end of the rows (space)")
+    print(home_point_mat)
+    if not home_point_mat or (len(home_point_mat) > 0 and len(home_point_mat[0]) != 3):
+        raise FileInterfaceException(error_msg)
+    try:
+        home_point_mat = np.array(home_point_mat).astype(float)
+    except ValueError:
+        raise FileInterfaceException(error_msg)
+
+    stamps = mat[:, 0]  # n x 1
+    # xyz = mat[:, 4:7]  # n x 3
+    ypr = mat[:, 7:10]  # n x 3
+    geodetic = mat[:, 16:19]
+    print(geodetic)
+    ned = np.empty((geodetic.shape[0], 3))
+    for i in range(len(geodetic)):
+        ned[i, :] = np.array(pymap3d.geodetic2ned(geodetic[i, 0], geodetic[i, 1], geodetic[i, 2], home_point_mat[0, 1], home_point_mat[0, 0], home_point_mat[0, 2], ell=pymap3d.Ellipsoid.from_name("wgs84"), deg=True))
+
+    print(ned)
+
+    quat = transform.Rotation.from_euler("ZYX", ypr, False).as_quat()
+    quat = np.roll(quat, 1, axis=1)  # shift 1 column -> w in front column
+    print(quat)
+    if not hasattr(imu_file_path, 'read'):  # if not file handle
+        logger.debug("Loaded {} stamps and poses from: {}".format(
+            len(stamps), imu_file_path))
+    return PoseTrajectory3D(ned, quat, stamps)
+
+
+def read_sf_vloc_trajectory_file(est_dir) -> PosePath3D:
+    """
+    parses trajectory file in sf vloc format (ts status num_inliers reset_count tx ty tz yaw pitch roll latitude longitude height)
+    :param est_dir: the trajectory directory
+    :return: trajectory.PoseTrajectory3D object
+    """
+    vloc_file_path = os.path.join(est_dir, "vloc.txt")
+    raw_mat = csv_read_matrix(vloc_file_path, delim=" ", comment_str="#")
+    error_msg = ("sf imu trajectory files must have at least 13 entries per row "
+                 "and no trailing delimiter at the end of the rows (space)")
+    if not raw_mat or (len(raw_mat) > 0 and len(raw_mat[0]) < 13):
+        raise FileInterfaceException(error_msg)
+    try:
+        mat = np.array(raw_mat).astype(float)
+    except ValueError:
+        raise FileInterfaceException(error_msg)
+    
+    print(mat[:, 1])
+
+    valid_mat = mat[mat[:, 1] == 3]
+    print(valid_mat[:, 0])
+    stamps = valid_mat[:, 0]  # n x 1
+    xyz = valid_mat[:, 4:7]  # n x 3
+    ypr = valid_mat[:, 7:10]  # n x 3
+    quat = transform.Rotation.from_euler("ZYX", ypr, True).as_quat()
+    # TODO transform fome imu to body
+    calib_file_path = os.path.join(est_dir, "calib_raw.yaml")
+    T_i_b, T_b_c = read_extrinsics(calib_file_path)
+    transform_to_body(xyz, quat, T_i_b)
+
+    quat = np.roll(quat, 1, axis=1)  # shift 1 column -> w in front column
+    if not hasattr(vloc_file_path, 'read'):  # if not file handle
+        logger.debug("Loaded {} stamps and poses from: {}".format(
+            len(stamps), vloc_file_path))
+    return PoseTrajectory3D(xyz, quat, stamps)
+
+
+def read_sf_vo_trajectory_file(est_dir) -> PosePath3D:
+    """
+    parses trajectory file in sf vo format (ts num_inliers tx ty tz yaw pitch roll is_keyframe time_cost reset_count)
+    :param est_dir: the trajectory directory
+    :return: trajectory.PoseTrajectory3D object
+    """
+    vo_file_path = os.path.join(est_dir, "vo.txt")
+    raw_mat = csv_read_matrix(vo_file_path, delim=" ", comment_str="#")
+    error_msg = ("sf imu trajectory files must have at least 10 entries per row "
+                 "and no trailing delimiter at the end of the rows (space)")
+    if not raw_mat or (len(raw_mat) > 0 and len(raw_mat[0]) < 10):
+        raise FileInterfaceException(error_msg)
+    try:
+        mat = np.array(raw_mat).astype(float)
+    except ValueError:
+        raise FileInterfaceException(error_msg)
+    stamps = mat[:, 0]  # n x 1
+    xyz = mat[:, 2:5]  # n x 3
+    ypr = mat[:, 5:8]  # n x 3
+    quat = transform.Rotation.from_euler("ZYX", ypr, True).as_quat()
+    quat = np.roll(quat, 1, axis=1)  # shift 1 column -> w in front column
+    print(quat)
+    if not hasattr(vo_file_path, 'read'):  # if not file handle
+        logger.debug("Loaded {} stamps and poses from: {}".format(
+            len(stamps), vo_file_path))
+    return PoseTrajectory3D(xyz, quat, stamps)
+
 
 
 def read_euroc_csv_trajectory(file_path) -> PoseTrajectory3D:

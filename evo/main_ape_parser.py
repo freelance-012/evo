@@ -3,8 +3,8 @@ import argparse
 from evo.core import units
 from evo.tools.settings import SETTINGS
 
-
 def parser() -> argparse.ArgumentParser:
+    print("[sgx][enter main_ape_parser::parser()]")
     basic_desc = "Absolute pose error (APE) metric app"
     lic = "(c) evo authors"
 
@@ -48,8 +48,8 @@ def parser() -> argparse.ArgumentParser:
         help="the axes for plot projection",
         choices=["xy", "xz", "yx", "yz", "zx", "zy", "xyz"])
     output_opts.add_argument(
-        "--plot_x_dimension", choices=["index", "seconds",
-                                       "distances"], default="seconds",
+        "--plot_x_dimension", choices=["index", "seconds", "original_ts"
+                                       "distances"], default="original_ts",
         help="dimension that is used on the x-axis of the raw value plot"
         "(default: seconds, or index if no timestamps are present)")
     output_opts.add_argument(
@@ -121,6 +121,12 @@ def parser() -> argparse.ArgumentParser:
     euroc_parser.add_argument("est_file",
                               help="estimated trajectory file in TUM format")
 
+    sfvloc_parser = sub_parsers.add_parser(
+        "sfvloc", parents=[shared_parser],
+        description="{} for sf vloc files - {}".format(basic_desc, lic))
+    sfvloc_parser.add_argument('ref_dir', help="reference trajectory directory")
+    sfvloc_parser.add_argument('est_dir', help="estimated trajectory directory")
+    
     bag_parser = sub_parsers.add_parser(
         "bag", parents=[shared_parser],
         description="{} for ROS bag files - {}".format(basic_desc, lic))
@@ -137,7 +143,7 @@ def parser() -> argparse.ArgumentParser:
 
     # Add time-sync options to parser of trajectory formats.
     for trajectory_parser in {
-            bag_parser, bag2_parser, euroc_parser, tum_parser
+            bag_parser, bag2_parser, euroc_parser, tum_parser, sfvloc_parser
     }:
         trajectory_parser.add_argument(
             "--t_max_diff", type=float, default=0.01,

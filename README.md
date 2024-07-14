@@ -1,3 +1,18 @@
+
+# evo_ape sfvloc
+## dependencies
+``` bash
+pip install pymap3d
+```
+
+## how to use
+```bash
+evo_ape sfvloc test/data/sf_rk3399/ test/data/sf_rk3399/ -vp --plot_mode=xy --plot_mode=yz
+evo_ape sfvloc --help
+```
+
+---
+
 # evo 
 
 ***Python package for the evaluation of odometry and SLAM***

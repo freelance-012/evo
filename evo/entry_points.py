@@ -40,6 +40,7 @@ only do required imports in respective module when creating parser
 
 
 def handle_entry_point(app_name: str) -> None:
+    print("[sgx][enter hadle_entry_point()]")
     parser_module = import_module(f"evo.main_{app_name}_parser")
     parser = parser_module.parser()
     argcomplete.autocomplete(parser)
@@ -48,18 +49,22 @@ def handle_entry_point(app_name: str) -> None:
 
 
 def ape() -> None:
+    print("[sgx][enter ape()]")
     handle_entry_point("ape")
 
 
 def rpe() -> None:
+    print("[sgx][enter rpe()]")
     handle_entry_point("rpe")
 
 
 def res() -> None:
+    print("[sgx][enter res()]")
     handle_entry_point("res")
 
 
 def traj() -> None:
+    print("[sgx][enter traj()]")
     handle_entry_point("traj")
 
 
@@ -88,6 +93,8 @@ def merge_config(args: argparse.Namespace) -> argparse.Namespace:
 
 
 def launch(main_module, parser: argparse.ArgumentParser) -> None:
+    print("[sgx][enter launch()]")
+
     args = parser.parse_args()
     if hasattr(args, "config"):
         args = merge_config(args)
