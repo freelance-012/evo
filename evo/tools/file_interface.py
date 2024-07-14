@@ -112,24 +112,22 @@ def read_extrinsics(calib_file_path):
         [0.0, 0.0, 0.0, 1.0]
     ])
     
-    print(T_b_i)
     T_i_b = np.linalg.inv(T_b_i)
-    print(T_i_b)
 
     T_b_c = np.dot(T_b_i, np.linalg.inv(T_c_i))
 
     return T_i_b, T_b_c
 
 
-def transform_to_body(xyz, quat, T_i_b):
-    R_i_b = T_i_b[:3, :3]
-    P_i_b = T_i_b[:3, 3]
+def transform_to_body(xyz, quat, T_x_b):
+    R_x_b = T_x_b[:3, :3]
+    P_x_b = T_x_b[:3, 3]
 
     for i in range(len(quat)):
-        R_w_i = transform.Rotation.from_quat(quat[i]).as_matrix()
-        P_w_i = xyz[i]
-        R_w_b = np.dot(R_w_i, R_i_b)
-        P_w_b = np.dot(R_w_i, P_i_b) + P_w_i
+        R_w_x = transform.Rotation.from_quat(quat[i]).as_matrix()
+        P_w_x = xyz[i]
+        R_w_b = np.dot(R_w_x, R_x_b)
+        P_w_b = np.dot(R_w_x, P_x_b) + P_w_x
 
         quat[i] = transform.Rotation.from_matrix(R_w_b).as_quat()
         xyz[i] = P_w_b
@@ -228,7 +226,7 @@ def write_kitti_poses_file(file_path, traj: PosePath3D,
     if isinstance(file_path, str):
         logger.info("Poses saved to: " + file_path)
 
-def read_sf_imu_trajectory_file(ref_dir) -> PosePath3D:
+def read_sf_imu_trajectory_file(ref_dir, ts_min = -1, ts_max = -1) -> PosePath3D:
     """
     parses trajectory file in sf imu format (ts imu.ts status flight_mode tx ty tz yaw pitch roll vx vy vz reset_count[0] reset_count[1] reset_count[2] latitude longitude altitude altitude_msl height)
     :param ref_dir: the trajectory directory(or file handle)
@@ -242,6 +240,10 @@ def read_sf_imu_trajectory_file(ref_dir) -> PosePath3D:
         raise FileInterfaceException(error_msg)
     try:
         mat = np.array(raw_mat).astype(float)
+        if(ts_min > 0):
+            mat = mat[mat[:, 0] > ts_min]
+            if(ts_max > ts_min):
+                mat =mat[mat[:, 0] < ts_max]
     except ValueError:
         raise FileInterfaceException(error_msg)
     
@@ -249,7 +251,6 @@ def read_sf_imu_trajectory_file(ref_dir) -> PosePath3D:
     home_point_mat = csv_read_matrix(home_point_file_path, delim=' ', comment_str="#")
     error_msg = ("sf home point files must have 3 entries per row "
                  "and no trailing delimiter at the end of the rows (space)")
-    print(home_point_mat)
     if not home_point_mat or (len(home_point_mat) > 0 and len(home_point_mat[0]) != 3):
         raise FileInterfaceException(error_msg)
     try:
@@ -268,16 +269,13 @@ def read_sf_imu_trajectory_file(ref_dir) -> PosePath3D:
     nav_reset_count = mat[:, 13:16]
     nav_geodetic = mat[:, 16:19]
     nav_height = mat[:, 20]
-    print(nav_geodetic)
     ned = np.empty((nav_geodetic.shape[0], 3))
     for i in range(len(nav_geodetic)):
         ned[i, :] = np.array(pymap3d.geodetic2ned(nav_geodetic[i, 0], nav_geodetic[i, 1], nav_geodetic[i, 2], home_point_mat[0, 1], home_point_mat[0, 0], home_point_mat[0, 2], ell=pymap3d.Ellipsoid.from_name("wgs84"), deg=True))
 
-    print(ned)
 
     quat = transform.Rotation.from_euler("ZYX", nav_euler, False).as_quat()
     quat = np.roll(quat, 1, axis=1)  # shift 1 column -> w in front column
-    print(quat)
     if not hasattr(imu_file_path, 'read'):  # if not file handle
         logger.debug("Loaded {} stamps and poses from: {}".format(
             len(nav_ts), imu_file_path))
@@ -330,7 +328,7 @@ def read_sf_vloc_trajectory_file(est_dir) -> PosePath3D:
     quat = transform.Rotation.from_euler("ZYX", vloc_euler, True).as_quat()
     # TODO transform fome imu to body
     calib_file_path = os.path.join(est_dir, "calib_raw.yaml")
-    T_i_b, T_b_c = read_extrinsics(calib_file_path)
+    T_i_b, _ = read_extrinsics(calib_file_path)
     transform_to_body(vloc_pos, quat, T_i_b)
 
     quat = np.roll(quat, 1, axis=1)  # shift 1 column -> w in front column
@@ -357,16 +355,23 @@ def read_sf_vo_trajectory_file(est_dir) -> PosePath3D:
         mat = np.array(raw_mat).astype(float)
     except ValueError:
         raise FileInterfaceException(error_msg)
-    stamps = mat[:, 0]  # n x 1
-    xyz = mat[:, 2:5]  # n x 3
-    ypr = mat[:, 5:8]  # n x 3
-    quat = transform.Rotation.from_euler("ZYX", ypr, True).as_quat()
+    vo_ts = mat[:, 0]  # n x 1
+    vo_pos = mat[:, 2:5]  # n x 3
+    vo_euler = mat[:, 5:8]  # n x 3
+    quat = transform.Rotation.from_euler("ZYX", vo_euler, True).as_quat()
+
+    # TODO transform fome imu to body
+    calib_file_path = os.path.join(est_dir, "calib_raw.yaml")
+    _, T_b_c = read_extrinsics(calib_file_path)
+    T_c_b = np.linalg.inv(T_b_c)
+    transform_to_body(vo_pos, quat, T_c_b)
+
     quat = np.roll(quat, 1, axis=1)  # shift 1 column -> w in front column
     print(quat)
     if not hasattr(vo_file_path, 'read'):  # if not file handle
         logger.debug("Loaded {} stamps and poses from: {}".format(
-            len(stamps), vo_file_path))
-    return PoseTrajectory3D(xyz, quat, stamps)
+            len(vo_ts), vo_file_path))
+    return PoseTrajectory3D(vo_pos, quat, vo_ts)
 
 
 

@@ -54,6 +54,19 @@ def load_trajectories(args):
                 traj_file)
         if args.ref:
             ref_traj = file_interface.read_tum_trajectory_file(args.ref)
+    elif args.subcommand == "sfvloc":
+        vloc_traj_file = os.path.join(args.traj_dir, "vloc.txt")
+        trajectories[vloc_traj_file], vloc_ts, vloc_status, vloc_num_inliers, vloc_reset_count, vloc_height = file_interface.read_sf_vloc_trajectory_file(args.traj_dir)
+
+        vo_traj_file = os.path.join(args.traj_dir, "vo.txt")
+        trajectories[vo_traj_file] = file_interface.read_sf_vo_trajectory_file(args.traj_dir)
+        if args.ref:
+            valid_vloc_ts = vloc_ts[vloc_status > 1]
+            ts_min = valid_vloc_ts[0]
+            ts_max = valid_vloc_ts[-1]
+            ref_traj, nav_ts, nav_navigation_mode, nav_rtk_yaw, nav_flight_mode, nav_velocity, nav_reset_count, nav_height = file_interface.read_sf_imu_trajectory_file(args.ref, ts_min, ts_max)
+            
+
     elif args.subcommand == "kitti":
         for pose_file in args.pose_files:
             if pose_file == args.ref:

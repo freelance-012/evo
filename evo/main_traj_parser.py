@@ -125,6 +125,12 @@ def parser() -> argparse.ArgumentParser:
     tum_parser.add_argument("traj_files",
                             help="one or multiple trajectory files", nargs='+')
 
+    sfvloc_parser = sub_parsers.add_parser(
+        "sfvloc", parents=[shared_parser],
+        description="{} for sf vloc files - {}".format(basic_desc, lic))
+    sfvloc_parser.add_argument("traj_dir",
+                            help="one trajectory directory")
+
     euroc_parser = sub_parsers.add_parser(
         "euroc",
         description="%s for EuRoC MAV .csv's - %s" % (basic_desc, lic),
