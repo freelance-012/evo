@@ -170,7 +170,12 @@ def run(args: argparse.Namespace) -> None:
                  ref_name=ref_name, est_name=est_name, change_unit=change_unit)
 
     if args.plot or args.save_plot or args.serialize_plot:
-        common.plot_result(args, result, traj_ref,
+        if(args.subcommand == "sfvo"):
+            common.plot_sfvo_result(args, result, traj_ref,
+                           result.trajectories[est_name],
+                           traj_ref_full=traj_ref_full)
+        else:
+            common.plot_result(args, result, traj_ref,
                            result.trajectories[est_name],
                            traj_ref_full=traj_ref_full)
 

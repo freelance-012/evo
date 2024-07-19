@@ -55,11 +55,10 @@ def load_trajectories(args):
         if args.ref:
             ref_traj = file_interface.read_tum_trajectory_file(args.ref)
     elif args.subcommand == "sfvloc":
-        vloc_traj_file = os.path.join(args.traj_dir, "vloc.txt")
-        trajectories[vloc_traj_file], vloc_data = file_interface.read_sf_vloc_trajectory_file(args.traj_dir)
+        trajectories["vloc"], vloc_data = file_interface.read_sf_vloc_trajectory_file(args.traj_dir)
 
         vo_traj_file = os.path.join(args.traj_dir, "vo.txt")
-        trajectories[vo_traj_file], vo_data = file_interface.read_sf_vo_trajectory_file(args.traj_dir)
+        trajectories["vo"], vo_data = file_interface.read_sf_vo_trajectory_file(args.traj_dir)
         if args.ref:
             ts_min = vloc_data["valid_ts"][0]
             ts_max = vloc_data["valid_ts"][-1]
@@ -378,9 +377,21 @@ def run(args):
         if args.ros_map_yaml:
             plot.ros_map(ax_traj, args.ros_map_yaml, plot_mode)
 
-        plot_collection.add_figure("trajectories", fig_traj)
+
+        # if(args.subcommand == "sfvloc" and args.ref):
+
+        #     fig_xyz_error, axarr_xyz_error = plt.subplots(3, sharex="col", 
+        #                                     figsize=tuple(SETTINGS.plot_figsize))
+        #     fig_rpy_error, axarr_rpy_error = plt.subplots(3, sharex="col",
+        #                                     figsize=tuple(SETTINGS.plot_figsize))
+            
+        #     x_array = np.array(nav_data["ts"])
+        #     plot.error_array(axarr_xyz_error, xyz_error, nav_ts, )
+
+
         plot_collection.add_figure("xyz_view", fig_xyz)
         plot_collection.add_figure("rpy_view", fig_rpy)
+        plot_collection.add_figure("trajectories", fig_traj)
 
 
 

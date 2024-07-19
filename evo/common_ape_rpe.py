@@ -171,21 +171,207 @@ def plot_sfvloc_result(args: argparse.Namespace, result: Result, traj_ref: PoseP
         x_label = "index"
 
 
-    # Plot the raw metric values.
-    fig1 = plt.figure(figsize=SETTINGS.plot_figsize)
+    # # Plot the raw metric values.
+    # fig1 = plt.figure(figsize=SETTINGS.plot_figsize)
 
-    plot.error_array(
-        fig1.gca(), result.np_arrays["error_array"], x_array=x_array,
-        statistics={
-            s: result.stats[s]
-            for s in SETTINGS.plot_statistics if s not in ("min", "max")
-        }, name=result.info["label"], title=result.info["title"],
-        xlabel=x_label)
+    # plot.error_array(
+    #     fig1.gca(), result.np_arrays["error_array"], x_array=x_array,
+    #     statistics={
+    #         s: result.stats[s]
+    #         for s in SETTINGS.plot_statistics if s not in ("min", "max")
+    #     }, name=result.info["label"], title=result.info["title"],
+    #     xlabel=x_label)
 
     plot_collection = plot.PlotCollection(result.info["title"])
-    plot_collection.add_figure("raw", fig1)
+    # plot_collection.add_figure("raw", fig1)
+
+    fig_traj_xyz, axarr_traj_xyz = plt.subplots(3, sharex="col",
+                                          figsize=tuple(SETTINGS.plot_figsize))
+    fig_traj_rpy, axarr_traj_rpy = plt.subplots(3, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    fig_traj_traj = plt.figure(figsize=tuple(SETTINGS.plot_figsize))
+
+    plot_mode = plot.PlotMode[args.plot_mode]
+    length_unit = Unit(SETTINGS.plot_trajectory_length_unit)
+    ax_traj = plot.prepare_axis(fig_traj_traj, plot_mode,
+                                length_unit=length_unit)
+    
+    plot.traj_xyz(axarr_traj_xyz, traj_ref,
+                    style=SETTINGS.plot_reference_linestyle,
+                    color=SETTINGS.plot_reference_color,
+                    label="ref",
+                    alpha=SETTINGS.plot_reference_alpha,
+                    start_timestamp=0, length_unit=length_unit)
+    
+    plot.traj_rpy(axarr_traj_rpy, traj_ref,
+                    style=SETTINGS.plot_reference_linestyle,
+                    color=SETTINGS.plot_reference_color,
+                    label="ref",
+                    alpha=SETTINGS.plot_reference_alpha,
+                    start_timestamp=0)
+    
+    color = next(ax_traj._get_lines.prop_cycler)['color']
+    plot.traj_xyz(axarr_traj_xyz, traj_est,
+                    style=SETTINGS.plot_trajectory_linestyle,
+                    color=color,
+                    label="est",
+                    alpha=SETTINGS.plot_trajectory_alpha,
+                    start_timestamp=0, length_unit=length_unit)
+    
+    plot.traj_rpy(axarr_traj_rpy, traj_est,
+                    style=SETTINGS.plot_trajectory_linestyle,
+                    color=color,
+                    label="est",
+                    alpha=SETTINGS.plot_trajectory_alpha,
+                    start_timestamp=0)
+    
+    plot_collection.add_figure("xyz_view", fig_traj_xyz)
+    plot_collection.add_figure("rpy_view", fig_traj_rpy)
+
+
+    fig_error_xyz, axarr_error_xyz =  plt.subplots(3, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    
+    plot.sfvloc_state_info(
+        axarr=axarr_error_xyz, subplots_num=3, ylabels=["x", "y", "z"],
+        info_array=result.np_arrays["error_xyz_array"],
+        x_array=x_array,
+        title="position_error",
+        xlabel=x_label)
+    
+    plot_collection.add_figure("error_xyz", fig_error_xyz)
+
+
+    fig_error_rpy, axarr_error_rpy = plt.subplots(3, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    
+    plot.sfvloc_state_info(
+        axarr=axarr_error_rpy, subplots_num=3, ylabels=["r", "p", "y"],
+        info_array=result.np_arrays["error_rpy_array"],
+        x_array=x_array,
+        title="rotation_error",
+        xlabel=x_label)
+    plot_collection.add_figure("error_rpy", fig_error_rpy)
 
     
+
+    # Plot status of nav and vloc
+    # state_plot_collection = plot.PlotCollection("sfvloc_state")
+    fig_vloc_status, axarr_vloc_status = plt.subplots(1, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    # plot.sfvloc_vloc_status()
+    plot.sfvloc_state_info(
+        axarr=axarr_vloc_status, subplots_num=1, ylabels=["status"],
+        info_array=vloc_data["status"], x_array=vloc_data["ts"], 
+        title="status",
+        xlabel=x_label)
+    plot_collection.add_figure("vloc_status", fig_vloc_status)
+    # state_plot_collection.add_figure("vloc_status", fig_vloc_status)
+
+
+    fig_vloc_num_inliers, axarr_vloc_num_inliers = plt.subplots(1, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    # plot.sfvloc_vloc_num_inliers()
+    plot.sfvloc_state_info(
+        axarr=axarr_vloc_num_inliers, subplots_num=1, ylabels=["num_inliers"],
+        info_array=vloc_data["num_inliers"], x_array=vloc_data["ts"], 
+        title="num_inliers",
+        xlabel=x_label)
+    plot_collection.add_figure("vloc_num_inliers", fig_vloc_num_inliers)
+    # state_plot_collection.add_figure("vloc_num_inliers", fig_vloc_num_inliers)
+
+
+
+    fig_vloc_reset_count, axarr_vloc_reset_count = plt.subplots(1, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    # plot.sfvloc_vloc_reset_count()
+    plot.sfvloc_state_info(
+        axarr=axarr_vloc_reset_count, subplots_num=1, ylabels=["reset_count"],
+        info_array=vloc_data["reset_count"], x_array=vloc_data["ts"], 
+        title="reset_count",
+        xlabel=x_label)
+    plot_collection.add_figure("vloc_reset_count", fig_vloc_reset_count)
+    # state_plot_collection.add_figure("vloc_reset_count", fig_vloc_reset_count)
+
+
+    fig_nav_mode, axarr_nav_mode = plt.subplots(1, sharex="col",
+                                            figsize=tuple(SETTINGS.plot_figsize))
+    plot.sfvloc_state_info(
+        axarr=axarr_nav_mode, subplots_num=1, ylabels=["navi_mode"], 
+        info_array=nav_data["navi_mode"], x_array=nav_data["ts"],
+        title="navi_mode",
+        xlabel=x_label)
+    plot_collection.add_figure("navi_mode", fig_nav_mode)
+    # state_plot_collection.add_figure("navi_mode", fig_nav_mode)
+
+
+    fig_nav_rtk_yaw, axarr_nav_rtk_yaw = plt.subplots(1, sharex="col",
+                                            figsize=tuple(SETTINGS.plot_figsize))
+    # plot.sfvloc_nav_rtk_yaw()
+    plot.sfvloc_state_info(
+        axarr=axarr_nav_rtk_yaw, subplots_num=1, ylabels=["rtk_yaw"], 
+        info_array=nav_data["rtk_yaw"], x_array=nav_data["ts"],
+        title="rtk_yaw",
+        xlabel=x_label)
+    plot_collection.add_figure("nav_rtk_yaw", fig_nav_rtk_yaw)
+    # state_plot_collection.add_figure("nav_rtk_yaw", fig_nav_rtk_yaw)
+
+    fig_nav_flight_mode, axarr_nav_flight_mode = plt.subplots(1, sharex="col",
+                                            figsize=tuple(SETTINGS.plot_figsize))
+    # plot.sfvloc_nav_flight_mode()
+    plot.sfvloc_state_info(
+        axarr=axarr_nav_flight_mode, subplots_num=1, ylabels=["flight_mode"], 
+        info_array=nav_data["flight_mode"], x_array=nav_data["ts"],
+        title="flight_mode",
+        xlabel=x_label)
+    plot_collection.add_figure("nav_flight_mode", fig_nav_flight_mode)
+    # state_plot_collection.add_figure("nav_flight_mode", fig_nav_flight_mode)
+    
+
+    fig_nav_vel, axarr_nav_velocity = plt.subplots(3, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    plot.sfvloc_state_info(
+        axarr=axarr_nav_velocity, subplots_num=3, ylabels=["Vx", "Vy", "Vz"], 
+        info_array=nav_data["velocity"], x_array=nav_data["ts"],
+        title="velocity",
+        xlabel=x_label)
+    plot_collection.add_figure("nav_velocity", fig_nav_vel)
+    # state_plot_collection.add_figure("nav_velocity", fig_nav_vel)
+
+
+    fig_nav_reset_count, axarr_nav_reset_count = plt.subplots(3, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    plot.sfvloc_state_info(
+        axarr=axarr_nav_reset_count, subplots_num=3, ylabels=["pos_reset", "alti_reset", "head_reset"],
+        info_array=nav_data["reset_count"], x_array=nav_data["ts"],
+        title="reset_cnt", 
+        xlabel=x_label)
+    plot_collection.add_figure("nav_reset_cnt", fig_nav_reset_count)
+    # state_plot_collection.add_figure("nav_reset_cnt", fig_nav_reset_count)
+    
+
+    fig_height, axarr_height = plt.subplots(1, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    plot.sfvloc_state_info(
+        axarr=axarr_height, subplots_num=1, ylabels=["radar"],
+        info_array=nav_data["height"], x_array=nav_data["ts"], 
+        title="radar",
+        xlabel=x_label)
+    plot_collection.add_figure("nav_height", fig_height)
+    # state_plot_collection.add_figure("nav_height", fig_height)
+
+
+    fig_vloc_height, axarr_vloc_height = plt.subplots(1, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    plot.sfvloc_state_info(
+        axarr=axarr_vloc_height, subplots_num=1, ylabels=["height"],
+        info_array=vloc_data["height"], x_array=vloc_data["ts"],
+        title="height", 
+        xlabel=x_label)
+    plot_collection.add_figure("vloc_height", fig_vloc_height)
+    # state_plot_collection.add_figure("vloc_height", fig_vloc_height)
+
+
     # Plot the values color-mapped onto the trajectory.
     if(args.plot_mode == "all"):
         plot_mode = plot.PlotMode("xyz")
@@ -207,118 +393,11 @@ def plot_sfvloc_result(args: argparse.Namespace, result: Result, traj_ref: PoseP
         plot_collection.add_figure(args.plot_mode, fig2)
 
 
-    # Plot status of nav and vloc
-
-    fig_vloc_status, axarr_vloc_status = plt.subplots(1, sharex="col",
-                                        figsize=tuple(SETTINGS.plot_figsize))
-    # plot.sfvloc_vloc_status()
-    plot.sfvloc_state_info(
-        axarr=axarr_vloc_status, subplots_num=1, ylabels=["status"],
-        info_array=vloc_data["status"], x_array=vloc_data["ts"], 
-        title="status",
-        xlabel=x_label)
-    plot_collection.add_figure("vloc_status", fig_vloc_status)
-
-
-    fig_vloc_num_inliers, axarr_vloc_num_inliers = plt.subplots(1, sharex="col",
-                                        figsize=tuple(SETTINGS.plot_figsize))
-    # plot.sfvloc_vloc_num_inliers()
-    plot.sfvloc_state_info(
-        axarr=axarr_vloc_num_inliers, subplots_num=1, ylabels=["num_inliers"],
-        info_array=vloc_data["num_inliers"], x_array=vloc_data["ts"], 
-        title="num_inliers",
-        xlabel=x_label)
-    plot_collection.add_figure("vloc_num_inliers", fig_vloc_num_inliers)
-
-
-
-    fig_vloc_reset_count, axarr_vloc_reset_count = plt.subplots(1, sharex="col",
-                                        figsize=tuple(SETTINGS.plot_figsize))
-    # plot.sfvloc_vloc_reset_count()
-    plot.sfvloc_state_info(
-        axarr=axarr_vloc_reset_count, subplots_num=1, ylabels=["reset_count"],
-        info_array=vloc_data["reset_count"], x_array=vloc_data["ts"], 
-        title="reset_count",
-        xlabel=x_label)
-    plot_collection.add_figure("vloc_reset_count", fig_vloc_reset_count)
-
-
-    fig_nav_mode, axarr_nav_mode = plt.subplots(1, sharex="col",
-                                            figsize=tuple(SETTINGS.plot_figsize))
-    plot.sfvloc_state_info(
-        axarr=axarr_nav_mode, subplots_num=1, ylabels=["navi_mode"], 
-        info_array=nav_data["navi_mode"], x_array=nav_data["ts"],
-        title="navi_mode",
-        xlabel=x_label)
-    plot_collection.add_figure("navi_mode", fig_nav_mode)
-
-
-    fig_nav_rtk_yaw, axarr_nav_rtk_yaw = plt.subplots(1, sharex="col",
-                                            figsize=tuple(SETTINGS.plot_figsize))
-    # plot.sfvloc_nav_rtk_yaw()
-    plot.sfvloc_state_info(
-        axarr=axarr_nav_rtk_yaw, subplots_num=1, ylabels=["rtk_yaw"], 
-        info_array=nav_data["rtk_yaw"], x_array=nav_data["ts"],
-        title="rtk_yaw",
-        xlabel=x_label)
-    plot_collection.add_figure("nav_rtk_yaw", fig_nav_rtk_yaw)
-
-    fig_nav_flight_mode, axarr_nav_flight_mode = plt.subplots(1, sharex="col",
-                                            figsize=tuple(SETTINGS.plot_figsize))
-    # plot.sfvloc_nav_flight_mode()
-    plot.sfvloc_state_info(
-        axarr=axarr_nav_flight_mode, subplots_num=1, ylabels=["flight_mode"], 
-        info_array=nav_data["flight_mode"], x_array=nav_data["ts"],
-        title="flight_mode",
-        xlabel=x_label)
-    plot_collection.add_figure("nav_flight_mode", fig_nav_flight_mode)
-    
-
-    fig_nav_vel, axarr_nav_velocity = plt.subplots(3, sharex="col",
-                                        figsize=tuple(SETTINGS.plot_figsize))
-    plot.sfvloc_state_info(
-        axarr=axarr_nav_velocity, subplots_num=3, ylabels=["Vx", "Vy", "Vz"], 
-        info_array=nav_data["velocity"], x_array=nav_data["ts"],
-        title="velocity",
-        xlabel=x_label)
-    plot_collection.add_figure("nav_velocity", fig_nav_vel)
-
-
-    fig_nav_reset_count, axarr_nav_reset_count = plt.subplots(3, sharex="col",
-                                        figsize=tuple(SETTINGS.plot_figsize))
-    plot.sfvloc_state_info(
-        axarr=axarr_nav_reset_count, subplots_num=3, ylabels=["pos_reset", "alti_reset", "head_reset"],
-        info_array=nav_data["reset_count"], x_array=nav_data["ts"],
-        title="reset_cnt", 
-        xlabel=x_label)
-    plot_collection.add_figure("nav_reset_cnt", fig_nav_reset_count)
-    
-
-    fig_height, axarr_height = plt.subplots(1, sharex="col",
-                                        figsize=tuple(SETTINGS.plot_figsize))
-    plot.sfvloc_state_info(
-        axarr=axarr_height, subplots_num=1, ylabels=["radar"],
-        info_array=nav_data["height"], x_array=nav_data["ts"], 
-        title="radar",
-        xlabel=x_label)
-    plot_collection.add_figure("nav_height", fig_height)
-
-
-    fig_vloc_height, axarr_vloc_height = plt.subplots(1, sharex="col",
-                                        figsize=tuple(SETTINGS.plot_figsize))
-    plot.sfvloc_state_info(
-        axarr=axarr_vloc_height, subplots_num=1, ylabels=["height"],
-        info_array=vloc_data["height"], x_array=vloc_data["ts"],
-        title="height", 
-        xlabel=x_label)
-    plot_collection.add_figure("vloc_height", fig_vloc_height)
-
-
-
 
 
     if args.plot:
         plot_collection.show()
+        # state_plot_collection.show()
     if args.save_plot:
         plot_collection.export(args.save_plot,
                                confirm_overwrite=not args.no_warnings)
@@ -327,6 +406,158 @@ def plot_sfvloc_result(args: argparse.Namespace, result: Result, traj_ref: PoseP
         plot_collection.serialize(args.serialize_plot,
                                   confirm_overwrite=not args.no_warnings)
     plot_collection.close()
+
+
+
+def plot_sfvo_result(args: argparse.Namespace, result: Result, traj_ref: PosePath3D,
+                traj_est: PosePath3D,
+                traj_ref_full: typing.Optional[PosePath3D] = None) -> None:
+    
+
+    from evo.tools import plot
+    from evo.tools.settings import SETTINGS
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    logger.debug(SEP)
+    logger.debug("Plotting sfvloc results... ")
+
+    if (args.plot_x_dimension == "distances"
+            and "distances_from_start" in result.np_arrays):
+        x_array = result.np_arrays["distances_from_start"]
+        x_label = "$d$ (m)"
+    elif (args.plot_x_dimension == "seconds"
+          and "seconds_from_start" in result.np_arrays):
+        x_array = result.np_arrays["seconds_from_start"]
+        x_label = "$t$ (s)"
+    elif (args.plot_x_dimension == "original_ts"
+          and "original_ts" in result.np_arrays):
+        x_array = result.np_arrays["original_ts"]
+        x_label = "$t$ (s)"
+    else:
+        x_array = None
+        x_label = "index"
+
+    # Plot the raw metric values.
+    fig1 = plt.figure(figsize=SETTINGS.plot_figsize)
+
+    plot.error_array(
+        fig1.gca(), result.np_arrays["error_array"], x_array=x_array,
+        statistics={
+            s: result.stats[s]
+            for s in SETTINGS.plot_statistics if s not in ("min", "max")
+        }, name=result.info["label"], title=result.info["title"],
+        xlabel=x_label)
+
+    plot_collection = plot.PlotCollection(result.info["title"])
+    plot_collection.add_figure("raw", fig1)
+
+
+    fig_traj_xyz, axarr_traj_xyz = plt.subplots(3, sharex="col",
+                                          figsize=tuple(SETTINGS.plot_figsize))
+    fig_traj_rpy, axarr_traj_rpy = plt.subplots(3, sharex="col",
+                                        figsize=tuple(SETTINGS.plot_figsize))
+    fig_traj_traj = plt.figure(figsize=tuple(SETTINGS.plot_figsize))
+
+    plot_mode = plot.PlotMode[args.plot_mode]
+    length_unit = Unit(SETTINGS.plot_trajectory_length_unit)
+    ax_traj = plot.prepare_axis(fig_traj_traj, plot_mode,
+                                length_unit=length_unit)
+    
+    plot.traj_xyz(axarr_traj_xyz, traj_ref,
+                    style=SETTINGS.plot_reference_linestyle,
+                    color=SETTINGS.plot_reference_color,
+                    label="ref",
+                    alpha=SETTINGS.plot_reference_alpha,
+                    start_timestamp=0, length_unit=length_unit)
+    
+    plot.traj_rpy(axarr_traj_rpy, traj_ref,
+                    style=SETTINGS.plot_reference_linestyle,
+                    color=SETTINGS.plot_reference_color,
+                    label="ref",
+                    alpha=SETTINGS.plot_reference_alpha,
+                    start_timestamp=0)
+    
+    color = next(ax_traj._get_lines.prop_cycler)['color']
+    plot.traj_xyz(axarr_traj_xyz, traj_est,
+                    style=SETTINGS.plot_trajectory_linestyle,
+                    color=color,
+                    label="est",
+                    alpha=SETTINGS.plot_trajectory_alpha,
+                    start_timestamp=0, length_unit=length_unit)
+    
+    plot.traj_rpy(axarr_traj_rpy, traj_est,
+                    style=SETTINGS.plot_trajectory_linestyle,
+                    color=color,
+                    label="est",
+                    alpha=SETTINGS.plot_trajectory_alpha,
+                    start_timestamp=0)
+    
+    plot_collection.add_figure("xyz_view", fig_traj_xyz)
+    plot_collection.add_figure("rpy_view", fig_traj_rpy)
+
+
+    # fig_error_xyz, axarr_error_xyz =  plt.subplots(3, sharex="col",
+    #                                     figsize=tuple(SETTINGS.plot_figsize))
+    
+    # plot.sfvloc_state_info(
+    #     axarr=axarr_error_xyz, subplots_num=3, ylabels=["x", "y", "z"],
+    #     info_array=result.np_arrays["error_xyz_array"],
+    #     x_array=x_array,
+    #     title="position_error",
+    #     xlabel=x_label)
+    
+    # plot_collection.add_figure("error_xyz", fig_error_xyz)
+
+
+    # fig_error_rpy, axarr_error_rpy = plt.subplots(3, sharex="col",
+    #                                     figsize=tuple(SETTINGS.plot_figsize))
+    
+    # plot.sfvloc_state_info(
+    #     axarr=axarr_error_rpy, subplots_num=3, ylabels=["r", "p", "y"],
+    #     info_array=result.np_arrays["error_rpy_array"],
+    #     x_array=x_array,
+    #     title="rotation_error",
+    #     xlabel=x_label)
+    # plot_collection.add_figure("error_rpy", fig_error_rpy)
+
+
+    # Plot the values color-mapped onto the trajectory.
+    if(args.plot_mode == "all"):
+        plot_mode = plot.PlotMode("xyz")
+        fig_xyz = plot_color_map(args, plot_mode, traj_ref, traj_ref_full, traj_est, result)
+        plot_mode = plot.PlotMode("xz")
+        fig_xz = plot_color_map(args, plot_mode, traj_ref, traj_ref_full, traj_est, result)
+        plot_mode = plot.PlotMode("yz")
+        fig_yz = plot_color_map(args, plot_mode, traj_ref, traj_ref_full, traj_est, result)
+        plot_mode = plot.PlotMode("xy")
+        fig_xy = plot_color_map(args, plot_mode, traj_ref, traj_ref_full, traj_est, result)
+
+        plot_collection.add_figure("fig_xyz", fig_xyz)
+        plot_collection.add_figure("fig_xz", fig_xz)
+        plot_collection.add_figure("fig_yz", fig_yz)
+        plot_collection.add_figure("fig_xy", fig_xy)
+    else:
+        plot_mode = plot.PlotMode(args.plot_mode)
+        fig2 = plot_color_map(args, plot_mode, traj_ref, traj_ref_full, traj_est, result)
+        plot_collection.add_figure(args.plot_mode, fig2)
+
+
+
+
+    if args.plot:
+        plot_collection.show()
+        # state_plot_collection.show()
+    if args.save_plot:
+        plot_collection.export(args.save_plot,
+                               confirm_overwrite=not args.no_warnings)
+    if args.serialize_plot:
+        logger.debug(SEP)
+        plot_collection.serialize(args.serialize_plot,
+                                  confirm_overwrite=not args.no_warnings)
+    plot_collection.close()
+
 
 
 def plot_status():

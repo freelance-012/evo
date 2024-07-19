@@ -23,6 +23,7 @@ import logging
 import typing
 
 import numpy as np
+import scipy.spatial.transform as transform
 
 from evo import EvoException
 import evo.core.transformations as tr
@@ -60,6 +61,10 @@ class PosePath3D(object):
             self._positions_xyz = np.array(positions_xyz)
         if orientations_quat_wxyz is not None:
             self._orientations_quat_wxyz = np.array(orientations_quat_wxyz)
+            # euler = quat_wxyz_to_euler_rpy([[1, 0, 0, 0]])
+            # print("euler: {}".format(euler))
+
+            self._orientations_euler_rpy = quat_wxyz_to_euler_rpy(self._orientations_quat_wxyz)
         if poses_se3 is not None:
             self._poses_se3 = poses_se3
         if self.num_poses == 0:
@@ -251,6 +256,8 @@ class PosePath3D(object):
             self._positions_xyz = self._positions_xyz[ids]
         if hasattr(self, "_orientations_quat_wxyz"):
             self._orientations_quat_wxyz = self._orientations_quat_wxyz[ids]
+        if hasattr(self, "_orientations_euler_rpy"):
+            self._orientations_euler_rpy = self._orientations_euler_rpy[ids]
         if hasattr(self, "_poses_se3"):
             self._poses_se3 = [self._poses_se3[idx] for idx in ids]
 
@@ -478,6 +485,15 @@ def se3_poses_to_xyz_quat_wxyz(
     xyz = np.array([pose[:3, 3] for pose in poses])
     quat_wxyz = np.array([tr.quaternion_from_matrix(pose) for pose in poses])
     return xyz, quat_wxyz
+
+
+def quat_wxyz_to_euler_rpy(
+        quat: np.ndarray) -> typing.Sequence[np.ndarray]:
+    
+    quat = np.roll(quat, -1, axis=1)  # shift 1 column -> w in end column
+    euler = transform.Rotation.from_quat(quat).as_euler("ZYX", True)
+
+    return euler
 
 
 def merge(trajectories: typing.Sequence[PoseTrajectory3D]) -> PoseTrajectory3D:
