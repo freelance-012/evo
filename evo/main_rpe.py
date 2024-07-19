@@ -133,7 +133,7 @@ def run(args: argparse.Namespace) -> None:
     logger.debug(SEP)
 
     if(args.subcommand == "sfvo"):
-        traj_ref, traj_est, ref_name, est_name, nav_ts, nav_navigation_mode, nav_rtk_yaw, nav_flight_mode, nav_velocity, nav_reset_count, nav_height, vloc_ts, vloc_status, vloc_num_inliers, vloc_reset_count, vloc_height = common.load_sfvloc_trajectories(args)
+        traj_ref, traj_est, ref_name, est_name, nav_data, _ = common.load_sfvloc_trajectories(args)
     else:
         traj_ref, traj_est, ref_name, est_name = common.load_trajectories(args)
 

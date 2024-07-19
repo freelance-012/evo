@@ -56,15 +56,14 @@ def load_trajectories(args):
             ref_traj = file_interface.read_tum_trajectory_file(args.ref)
     elif args.subcommand == "sfvloc":
         vloc_traj_file = os.path.join(args.traj_dir, "vloc.txt")
-        trajectories[vloc_traj_file], vloc_ts, vloc_status, vloc_num_inliers, vloc_reset_count, vloc_height = file_interface.read_sf_vloc_trajectory_file(args.traj_dir)
+        trajectories[vloc_traj_file], vloc_data = file_interface.read_sf_vloc_trajectory_file(args.traj_dir)
 
         vo_traj_file = os.path.join(args.traj_dir, "vo.txt")
-        trajectories[vo_traj_file] = file_interface.read_sf_vo_trajectory_file(args.traj_dir)
+        trajectories[vo_traj_file], vo_data = file_interface.read_sf_vo_trajectory_file(args.traj_dir)
         if args.ref:
-            valid_vloc_ts = vloc_ts[vloc_status > 1]
-            ts_min = valid_vloc_ts[0]
-            ts_max = valid_vloc_ts[-1]
-            ref_traj, nav_ts, nav_navigation_mode, nav_rtk_yaw, nav_flight_mode, nav_velocity, nav_reset_count, nav_height = file_interface.read_sf_imu_trajectory_file(args.ref, ts_min, ts_max)
+            ts_min = vloc_data["valid_ts"][0]
+            ts_max = vloc_data["valid_ts"][-1]
+            ref_traj, nav_data = file_interface.read_sf_imu_trajectory_file(args.ref, ts_min, ts_max)
             
 
     elif args.subcommand == "kitti":
@@ -382,6 +381,118 @@ def run(args):
         plot_collection.add_figure("trajectories", fig_traj)
         plot_collection.add_figure("xyz_view", fig_xyz)
         plot_collection.add_figure("rpy_view", fig_rpy)
+
+
+
+        # # Plot status of nav and vloc
+
+        # fig_vloc_status, axarr_vloc_status = plt.subplots(1, sharex="col",
+        #                                     figsize=tuple(SETTINGS.plot_figsize))
+        # # plot.sfvloc_vloc_status()
+        # plot.sfvloc_state_info(
+        #     axarr=axarr_vloc_status, subplots_num=1, ylabels=["status"],
+        #     info_array=vloc_data["status"], x_array=vloc_data["ts"], 
+        #     title="status",
+        #     xlabel=x_label)
+        # plot_collection.add_figure("vloc_status", fig_vloc_status)
+
+
+        # fig_vloc_num_inliers, axarr_vloc_num_inliers = plt.subplots(1, sharex="col",
+        #                                     figsize=tuple(SETTINGS.plot_figsize))
+        # # plot.sfvloc_vloc_num_inliers()
+        # plot.sfvloc_state_info(
+        #     axarr=axarr_vloc_num_inliers, subplots_num=1, ylabels=["num_inliers"],
+        #     info_array=vloc_data["num_inliers"], x_array=vloc_data["ts"], 
+        #     title="num_inliers",
+        #     xlabel=x_label)
+        # plot_collection.add_figure("vloc_num_inliers", fig_vloc_num_inliers)
+
+
+
+        # fig_vloc_reset_count, axarr_vloc_reset_count = plt.subplots(1, sharex="col",
+        #                                     figsize=tuple(SETTINGS.plot_figsize))
+        # # plot.sfvloc_vloc_reset_count()
+        # plot.sfvloc_state_info(
+        #     axarr=axarr_vloc_reset_count, subplots_num=1, ylabels=["reset_count"],
+        #     info_array=vloc_data["reset_count"], x_array=vloc_data["ts"], 
+        #     title="reset_count",
+        #     xlabel=x_label)
+        # plot_collection.add_figure("vloc_reset_count", fig_vloc_reset_count)
+
+
+        # fig_nav_mode, axarr_nav_mode = plt.subplots(1, sharex="col",
+        #                                         figsize=tuple(SETTINGS.plot_figsize))
+        # plot.sfvloc_state_info(
+        #     axarr=axarr_nav_mode, subplots_num=1, ylabels=["navi_mode"], 
+        #     info_array=nav_data["navi_mode"], x_array=nav_data["ts"],
+        #     title="navi_mode",
+        #     xlabel=x_label)
+        # plot_collection.add_figure("navi_mode", fig_nav_mode)
+
+
+        # fig_nav_rtk_yaw, axarr_nav_rtk_yaw = plt.subplots(1, sharex="col",
+        #                                         figsize=tuple(SETTINGS.plot_figsize))
+        # # plot.sfvloc_nav_rtk_yaw()
+        # plot.sfvloc_state_info(
+        #     axarr=axarr_nav_rtk_yaw, subplots_num=1, ylabels=["rtk_yaw"], 
+        #     info_array=nav_data["rtk_yaw"], x_array=nav_data["ts"],
+        #     title="rtk_yaw",
+        #     xlabel=x_label)
+        # plot_collection.add_figure("nav_rtk_yaw", fig_nav_rtk_yaw)
+
+        # fig_nav_flight_mode, axarr_nav_flight_mode = plt.subplots(1, sharex="col",
+        #                                         figsize=tuple(SETTINGS.plot_figsize))
+        # # plot.sfvloc_nav_flight_mode()
+        # plot.sfvloc_state_info(
+        #     axarr=axarr_nav_flight_mode, subplots_num=1, ylabels=["flight_mode"], 
+        #     info_array=nav_data["flight_mode"], x_array=nav_data["ts"],
+        #     title="flight_mode",
+        #     xlabel=x_label)
+        # plot_collection.add_figure("nav_flight_mode", fig_nav_flight_mode)
+        
+
+        # fig_nav_vel, axarr_nav_velocity = plt.subplots(3, sharex="col",
+        #                                     figsize=tuple(SETTINGS.plot_figsize))
+        # plot.sfvloc_state_info(
+        #     axarr=axarr_nav_velocity, subplots_num=3, ylabels=["Vx", "Vy", "Vz"], 
+        #     info_array=nav_data["velocity"], x_array=nav_data["ts"],
+        #     title="velocity",
+        #     xlabel=x_label)
+        # plot_collection.add_figure("nav_velocity", fig_nav_vel)
+
+
+        # fig_nav_reset_count, axarr_nav_reset_count = plt.subplots(3, sharex="col",
+        #                                     figsize=tuple(SETTINGS.plot_figsize))
+        # plot.sfvloc_state_info(
+        #     axarr=axarr_nav_reset_count, subplots_num=3, ylabels=["pos_reset", "alti_reset", "head_reset"],
+        #     info_array=nav_data["reset_count"], x_array=nav_data["ts"],
+        #     title="reset_cnt", 
+        #     xlabel=x_label)
+        # plot_collection.add_figure("nav_reset_cnt", fig_nav_reset_count)
+        
+
+        # fig_height, axarr_height = plt.subplots(1, sharex="col",
+        #                                     figsize=tuple(SETTINGS.plot_figsize))
+        # plot.sfvloc_state_info(
+        #     axarr=axarr_height, subplots_num=1, ylabels=["radar"],
+        #     info_array=nav_data["height"], x_array=nav_data["ts"], 
+        #     title="radar",
+        #     xlabel=x_label)
+        # plot_collection.add_figure("nav_height", fig_height)
+
+
+        # fig_vloc_height, axarr_vloc_height = plt.subplots(1, sharex="col",
+        #                                     figsize=tuple(SETTINGS.plot_figsize))
+        # plot.sfvloc_state_info(
+        #     axarr=axarr_vloc_height, subplots_num=1, ylabels=["height"],
+        #     info_array=vloc_data["height"], x_array=vloc_data["ts"],
+        #     title="height", 
+        #     xlabel=x_label)
+        # plot_collection.add_figure("vloc_height", fig_vloc_height)
+
+
+
+
         if args.plot:
             plot_collection.show()
         if args.save_plot:

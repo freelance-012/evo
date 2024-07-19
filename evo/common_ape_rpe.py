@@ -40,23 +40,19 @@ def load_sfvloc_trajectories(
     traj_ref: typing.Union[PosePath3D, PoseTrajectory3D]
     traj_est: typing.Union[PosePath3D, PoseTrajectory3D]
 
+    vloc_data = {}
     if args.subcommand == "sfvloc":
-        traj_ref, nav_ts, nav_navigation_mode, nav_rtk_yaw, nav_flight_mode, nav_velocity, nav_reset_count, nav_height = file_interface.read_sf_imu_trajectory_file(args.ref_dir)
-        traj_est, vloc_ts, vloc_status, vloc_num_inliers, vloc_reset_count, vloc_height = file_interface.read_sf_vloc_trajectory_file(args.est_dir)
+        traj_ref, nav_data = file_interface.read_sf_imu_trajectory_file(args.ref_dir)
+        traj_est, vloc_data = file_interface.read_sf_vloc_trajectory_file(args.est_dir)
         ref_name, est_name = os.path.join(args.ref_dir, "imu.txt"), os.path.join(args.est_dir, "vloc.txt")
     elif args.subcommand == "sfvo":
-        traj_ref, nav_ts, nav_navigation_mode, nav_rtk_yaw, nav_flight_mode, nav_velocity, nav_reset_count, nav_height = file_interface.read_sf_imu_trajectory_file(args.ref_dir)
-        traj_est = file_interface.read_sf_vo_trajectory_file(args.est_dir)
+        traj_ref, nav_data = file_interface.read_sf_imu_trajectory_file(args.ref_dir)
+        traj_est, vo_data = file_interface.read_sf_vo_trajectory_file(args.est_dir)
         ref_name, est_name = os.path.join(args.ref_dir, "imu.txt"), os.path.join(args.est_dir, "vo.txt")
-        vloc_ts = []
-        vloc_status = []
-        vloc_num_inliers = []
-        vloc_reset_count = []
-        vloc_height = []
     else:
         raise KeyError("unknown sub-command: {}".format(args.subcommand))
     
-    return traj_ref, traj_est, ref_name, est_name, nav_ts, nav_navigation_mode, nav_rtk_yaw, nav_flight_mode, nav_velocity, nav_reset_count, nav_height, vloc_ts, vloc_status, vloc_num_inliers, vloc_reset_count, vloc_height
+    return traj_ref, traj_est, ref_name, est_name, nav_data, vloc_data
 
 
 def load_trajectories(
@@ -144,18 +140,8 @@ def get_delta_unit(args: argparse.Namespace) -> Unit:
 
 def plot_sfvloc_result(args: argparse.Namespace, result: Result, traj_ref: PosePath3D,
                 traj_est: PosePath3D,
-                nav_ts,
-                nav_navigation_mode, 
-                nav_rtk_yaw, 
-                nav_flight_mode, 
-                nav_velocity, 
-                nav_reset_count, 
-                nav_height, 
-                vloc_ts,
-                vloc_status, 
-                vloc_num_inliers, 
-                vloc_reset_count, 
-                vloc_height,
+                nav_data: dict,
+                vloc_data: dict,
                 traj_ref_full: typing.Optional[PosePath3D] = None) -> None:
     
 
@@ -228,7 +214,7 @@ def plot_sfvloc_result(args: argparse.Namespace, result: Result, traj_ref: PoseP
     # plot.sfvloc_vloc_status()
     plot.sfvloc_state_info(
         axarr=axarr_vloc_status, subplots_num=1, ylabels=["status"],
-        info_array=vloc_status, x_array=vloc_ts, 
+        info_array=vloc_data["status"], x_array=vloc_data["ts"], 
         title="status",
         xlabel=x_label)
     plot_collection.add_figure("vloc_status", fig_vloc_status)
@@ -239,7 +225,7 @@ def plot_sfvloc_result(args: argparse.Namespace, result: Result, traj_ref: PoseP
     # plot.sfvloc_vloc_num_inliers()
     plot.sfvloc_state_info(
         axarr=axarr_vloc_num_inliers, subplots_num=1, ylabels=["num_inliers"],
-        info_array=vloc_num_inliers, x_array=vloc_ts, 
+        info_array=vloc_data["num_inliers"], x_array=vloc_data["ts"], 
         title="num_inliers",
         xlabel=x_label)
     plot_collection.add_figure("vloc_num_inliers", fig_vloc_num_inliers)
@@ -251,7 +237,7 @@ def plot_sfvloc_result(args: argparse.Namespace, result: Result, traj_ref: PoseP
     # plot.sfvloc_vloc_reset_count()
     plot.sfvloc_state_info(
         axarr=axarr_vloc_reset_count, subplots_num=1, ylabels=["reset_count"],
-        info_array=vloc_reset_count, x_array=vloc_ts, 
+        info_array=vloc_data["reset_count"], x_array=vloc_data["ts"], 
         title="reset_count",
         xlabel=x_label)
     plot_collection.add_figure("vloc_reset_count", fig_vloc_reset_count)
@@ -261,7 +247,7 @@ def plot_sfvloc_result(args: argparse.Namespace, result: Result, traj_ref: PoseP
                                             figsize=tuple(SETTINGS.plot_figsize))
     plot.sfvloc_state_info(
         axarr=axarr_nav_mode, subplots_num=1, ylabels=["navi_mode"], 
-        info_array=nav_navigation_mode, x_array=nav_ts,
+        info_array=nav_data["navi_mode"], x_array=nav_data["ts"],
         title="navi_mode",
         xlabel=x_label)
     plot_collection.add_figure("navi_mode", fig_nav_mode)
@@ -272,7 +258,7 @@ def plot_sfvloc_result(args: argparse.Namespace, result: Result, traj_ref: PoseP
     # plot.sfvloc_nav_rtk_yaw()
     plot.sfvloc_state_info(
         axarr=axarr_nav_rtk_yaw, subplots_num=1, ylabels=["rtk_yaw"], 
-        info_array=nav_rtk_yaw, x_array=nav_ts,
+        info_array=nav_data["rtk_yaw"], x_array=nav_data["ts"],
         title="rtk_yaw",
         xlabel=x_label)
     plot_collection.add_figure("nav_rtk_yaw", fig_nav_rtk_yaw)
@@ -282,7 +268,7 @@ def plot_sfvloc_result(args: argparse.Namespace, result: Result, traj_ref: PoseP
     # plot.sfvloc_nav_flight_mode()
     plot.sfvloc_state_info(
         axarr=axarr_nav_flight_mode, subplots_num=1, ylabels=["flight_mode"], 
-        info_array=nav_flight_mode, x_array=nav_ts,
+        info_array=nav_data["flight_mode"], x_array=nav_data["ts"],
         title="flight_mode",
         xlabel=x_label)
     plot_collection.add_figure("nav_flight_mode", fig_nav_flight_mode)
@@ -292,7 +278,7 @@ def plot_sfvloc_result(args: argparse.Namespace, result: Result, traj_ref: PoseP
                                         figsize=tuple(SETTINGS.plot_figsize))
     plot.sfvloc_state_info(
         axarr=axarr_nav_velocity, subplots_num=3, ylabels=["Vx", "Vy", "Vz"], 
-        info_array=nav_velocity, x_array=nav_ts,
+        info_array=nav_data["velocity"], x_array=nav_data["ts"],
         title="velocity",
         xlabel=x_label)
     plot_collection.add_figure("nav_velocity", fig_nav_vel)
@@ -302,7 +288,7 @@ def plot_sfvloc_result(args: argparse.Namespace, result: Result, traj_ref: PoseP
                                         figsize=tuple(SETTINGS.plot_figsize))
     plot.sfvloc_state_info(
         axarr=axarr_nav_reset_count, subplots_num=3, ylabels=["pos_reset", "alti_reset", "head_reset"],
-        info_array=nav_reset_count, x_array=nav_ts,
+        info_array=nav_data["reset_count"], x_array=nav_data["ts"],
         title="reset_cnt", 
         xlabel=x_label)
     plot_collection.add_figure("nav_reset_cnt", fig_nav_reset_count)
@@ -312,7 +298,7 @@ def plot_sfvloc_result(args: argparse.Namespace, result: Result, traj_ref: PoseP
                                         figsize=tuple(SETTINGS.plot_figsize))
     plot.sfvloc_state_info(
         axarr=axarr_height, subplots_num=1, ylabels=["radar"],
-        info_array=nav_height, x_array=nav_ts, 
+        info_array=nav_data["height"], x_array=nav_data["ts"], 
         title="radar",
         xlabel=x_label)
     plot_collection.add_figure("nav_height", fig_height)
@@ -322,7 +308,7 @@ def plot_sfvloc_result(args: argparse.Namespace, result: Result, traj_ref: PoseP
                                         figsize=tuple(SETTINGS.plot_figsize))
     plot.sfvloc_state_info(
         axarr=axarr_vloc_height, subplots_num=1, ylabels=["height"],
-        info_array=vloc_height, x_array=vloc_ts,
+        info_array=vloc_data["height"], x_array=vloc_data["ts"],
         title="height", 
         xlabel=x_label)
     plot_collection.add_figure("vloc_height", fig_vloc_height)

@@ -258,30 +258,31 @@ def read_sf_imu_trajectory_file(ref_dir, ts_min = -1, ts_max = -1) -> PosePath3D
     except ValueError:
         raise FileInterfaceException(error_msg)
 
-    nav_ts = mat[:, 0]  # n x 1
-    nav_status = mat[:, 2].astype(int)
-    nav_navigation_mode = np.bitwise_and(nav_status, 15)
-    nav_rtk_yaw = np.bitwise_and(nav_status, 22)
-    nav_flight_mode = mat[:, 3]
-    # nav_pos = mat[:, 4:7]  # n x 3
-    nav_euler = mat[:, 7:10]  # n x 3
-    nav_velocity = mat[:, 10:13]
-    nav_reset_count = mat[:, 13:16]
-    nav_geodetic = mat[:, 16:19]
-    nav_height = mat[:, 20]
-    ned = np.empty((nav_geodetic.shape[0], 3))
-    for i in range(len(nav_geodetic)):
-        ned[i, :] = np.array(pymap3d.geodetic2ned(nav_geodetic[i, 0], nav_geodetic[i, 1], nav_geodetic[i, 2], home_point_mat[0, 1], home_point_mat[0, 0], home_point_mat[0, 2], ell=pymap3d.Ellipsoid.from_name("wgs84"), deg=True))
+    nav_data = {}
+    nav_data["ts"] = mat[:, 0]  # n x 1
+    nav_data["status"] = mat[:, 2].astype(int)
+    nav_data["navi_mode"] = np.bitwise_and(nav_data["status"], 15)
+    nav_data["rtk_yaw"] = np.bitwise_and(nav_data["status"], 22)
+    nav_data["flight_mode"] = mat[:, 3]
+    nav_data["pos"] = mat[:, 4:7]  # n x 3
+    nav_data["euler"] = mat[:, 7:10]  # n x 3
+    nav_data["velocity"] = mat[:, 10:13]
+    nav_data["reset_count"] = mat[:, 13:16]
+    nav_data["geodetic"] = mat[:, 16:19]
+    nav_data["height"] = mat[:, 20]
+    ned = np.empty((nav_data["geodetic"].shape[0], 3))
+    for i in range(len(nav_data["geodetic"])):
+        ned[i, :] = np.array(pymap3d.geodetic2ned(nav_data["geodetic"][i, 0], nav_data["geodetic"][i, 1], nav_data["geodetic"][i, 2], home_point_mat[0, 1], home_point_mat[0, 0], home_point_mat[0, 2], ell=pymap3d.Ellipsoid.from_name("wgs84"), deg=True))
 
 
-    quat = transform.Rotation.from_euler("ZYX", nav_euler, False).as_quat()
+    quat = transform.Rotation.from_euler("ZYX", nav_data["euler"], False).as_quat()
     quat = np.roll(quat, 1, axis=1)  # shift 1 column -> w in front column
     if not hasattr(imu_file_path, 'read'):  # if not file handle
         logger.debug("Loaded {} stamps and poses from: {}".format(
-            len(nav_ts), imu_file_path))
+            len(nav_data["ts"]), imu_file_path))
     
 
-    return PoseTrajectory3D(ned, quat, nav_ts), nav_ts, nav_navigation_mode, nav_rtk_yaw, nav_flight_mode, nav_velocity, nav_reset_count, nav_height
+    return PoseTrajectory3D(ned, quat, nav_data["ts"]), nav_data
 
 
 def read_sf_vloc_trajectory_file(est_dir) -> PosePath3D:
@@ -301,42 +302,43 @@ def read_sf_vloc_trajectory_file(est_dir) -> PosePath3D:
     except ValueError:
         raise FileInterfaceException(error_msg)
     
-    vloc_ts = mat[:, 0]
-    vloc_status = mat[:, 1]
-    vloc_num_inliers = mat[:, 2]
-    vloc_reset_count = mat[:, 3]
-    vloc_pos = mat[:, 4:7]  # n x 3
-    vloc_euler = mat[:, 7:10]  # n x 3
-    vloc_latitude = mat[:, 10]
-    vloc_longitude = mat[:, 11]
-    vloc_height = mat[:, 12]
+    vloc_data = {}
+    vloc_data["ts"] = mat[:, 0]
+    vloc_data["status"] = mat[:, 1]
+    vloc_data["num_inliers"] = mat[:, 2]
+    vloc_data["reset_count"] = mat[:, 3]
+    vloc_data["pos"] = mat[:, 4:7]  # n x 3
+    vloc_data["euler"] = mat[:, 7:10]  # n x 3
+    vloc_data["latitude"] = mat[:, 10]
+    vloc_data["longitude"] = mat[:, 11]
+    vloc_data["height"] = mat[:, 12]
 
 
-    valid_mat = mat[vloc_status > 1]
+    valid_mat = mat[vloc_data["status"] > 1]
 
 
-    vloc_valid_ts = valid_mat[:, 0]  # n x 1
-    # vloc_status = valid_mat[:, 1]
-    # vloc_num_inliers = valid_mat[:, 2]
-    # vloc_reset_count = valid_mat[:, 3]
-    vloc_pos = valid_mat[:, 4:7]  # n x 3
-    vloc_euler = valid_mat[:, 7:10]  # n x 3
-    # vloc_latitude = valid_mat[10]
-    # vloc_longitude = valid_mat[11]
-    # vloc_height = valid_mat[12]
+    vloc_data["valid_ts"] = valid_mat[:, 0]  # n x 1
+    # vloc_data["status"] = valid_mat[:, 1]
+    # vloc_data["num_inliers"] = valid_mat[:, 2]
+    # vloc_data["reset_count"] = valid_mat[:, 3]
+    vloc_data["pos"] = valid_mat[:, 4:7]  # n x 3
+    vloc_data["euler"] = valid_mat[:, 7:10]  # n x 3
+    # vloc_data["latitude"] = valid_mat[10]
+    # vloc_data["longitude"] = valid_mat[11]
+    # vloc_data["height"] = valid_mat[12]
 
-    quat = transform.Rotation.from_euler("ZYX", vloc_euler, True).as_quat()
+    quat = transform.Rotation.from_euler("ZYX", vloc_data["euler"], True).as_quat()
     # TODO transform fome imu to body
     calib_file_path = os.path.join(est_dir, "calib_raw.yaml")
     T_i_b, _ = read_extrinsics(calib_file_path)
-    transform_to_body(vloc_pos, quat, T_i_b)
+    transform_to_body(vloc_data["pos"], quat, T_i_b)
 
     quat = np.roll(quat, 1, axis=1)  # shift 1 column -> w in front column
     if not hasattr(vloc_file_path, 'read'):  # if not file handle
         logger.debug("Loaded {} stamps and poses from: {}".format(
-            len(vloc_valid_ts), vloc_file_path))
-        
-    return PoseTrajectory3D(vloc_pos, quat, vloc_valid_ts), vloc_ts, vloc_status, vloc_num_inliers, vloc_reset_count, vloc_height
+            len(vloc_data["valid_ts"]), vloc_file_path))
+    
+    return PoseTrajectory3D(vloc_data["pos"], quat, vloc_data["valid_ts"]), vloc_data
 
 
 def read_sf_vo_trajectory_file(est_dir) -> PosePath3D:
@@ -355,23 +357,25 @@ def read_sf_vo_trajectory_file(est_dir) -> PosePath3D:
         mat = np.array(raw_mat).astype(float)
     except ValueError:
         raise FileInterfaceException(error_msg)
-    vo_ts = mat[:, 0]  # n x 1
-    vo_pos = mat[:, 2:5]  # n x 3
-    vo_euler = mat[:, 5:8]  # n x 3
-    quat = transform.Rotation.from_euler("ZYX", vo_euler, True).as_quat()
+    
+    vo_data = {}
+    vo_data["ts"] = mat[:, 0]  # n x 1
+    vo_data["pos"] = mat[:, 2:5]  # n x 3
+    vo_data["euler"] = mat[:, 5:8]  # n x 3
+    quat = transform.Rotation.from_euler("ZYX", vo_data["euler"], True).as_quat()
 
     # TODO transform fome imu to body
     calib_file_path = os.path.join(est_dir, "calib_raw.yaml")
     _, T_b_c = read_extrinsics(calib_file_path)
     T_c_b = np.linalg.inv(T_b_c)
-    transform_to_body(vo_pos, quat, T_c_b)
+    transform_to_body(vo_data["pos"], quat, T_c_b)
 
     quat = np.roll(quat, 1, axis=1)  # shift 1 column -> w in front column
     print(quat)
     if not hasattr(vo_file_path, 'read'):  # if not file handle
         logger.debug("Loaded {} stamps and poses from: {}".format(
-            len(vo_ts), vo_file_path))
-    return PoseTrajectory3D(vo_pos, quat, vo_ts)
+            len(vo_data["ts"]), vo_file_path))
+    return PoseTrajectory3D(vo_data["pos"], quat, vo_data["ts"]), vo_data
 
 
 
