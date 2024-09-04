@@ -127,6 +127,32 @@ def parser() -> argparse.ArgumentParser:
     sfvloc_parser.add_argument('ref_dir', help="reference trajectory directory")
     sfvloc_parser.add_argument('est_dir', help="estimated trajectory directory")
     
+    reloc_parser = sub_parsers.add_parser(
+        "reloc", parents=[shared_parser],
+        description="{} for sf vloc files - {}".format(basic_desc, lic))
+    reloc_parser.add_argument('ref_dir', help="reference trajectory directory")
+    reloc_parser.add_argument('est_dir', help="estimated trajectory directory")
+    
+    fusion_parser = sub_parsers.add_parser(
+        "fusion", parents=[shared_parser],
+        description="{} for sf vloc files - {}".format(basic_desc, lic))
+    fusion_parser.add_argument('ref_dir', help="reference trajectory directory")
+    fusion_parser.add_argument('est_dir', help="estimated trajectory directory")
+    
+    sfvio_parser = sub_parsers.add_parser(
+        "sfvio", parents=[shared_parser],
+        description="{} for sf vio files - {}".format(basic_desc, lic))
+    sfvio_parser.add_argument('ref_dir', help="reference trajectory directory")
+    sfvio_parser.add_argument('est_dir', help="estimated trajectory directory")
+    
+    sfvland_parser = sub_parsers.add_parser(
+        "sfvland", parents=[shared_parser],
+        description="{} for sf vland files - {}".format(basic_desc, lic))
+    sfvland_parser.add_argument('ref_dir', help="reference trajectory directory")
+    sfvland_parser.add_argument('est_dir', help="estimated trajectory directory")
+    
+
+
     bag_parser = sub_parsers.add_parser(
         "bag", parents=[shared_parser],
         description="{} for ROS bag files - {}".format(basic_desc, lic))
@@ -143,7 +169,7 @@ def parser() -> argparse.ArgumentParser:
 
     # Add time-sync options to parser of trajectory formats.
     for trajectory_parser in {
-            bag_parser, bag2_parser, euroc_parser, tum_parser, sfvloc_parser
+            bag_parser, bag2_parser, euroc_parser, tum_parser, sfvloc_parser, reloc_parser, fusion_parser, sfvio_parser, sfvland_parser
     }:
         trajectory_parser.add_argument(
             "--t_max_diff", type=float, default=0.01,

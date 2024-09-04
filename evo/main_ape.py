@@ -115,11 +115,21 @@ def run(args: argparse.Namespace) -> None:
     logger.debug(SEP)
 
     if(args.subcommand == "sfvloc"):
-        traj_ref, traj_est, ref_name, est_name, nav_data, vloc_data= common.load_sfvloc_trajectories(args)
+        traj_ref, traj_est, ref_name, est_name, nav_data, vloc_data, vo_data = common.load_sfvloc_trajectories(args)
+    elif(args.subcommand == "reloc"):
+        traj_ref, traj_est, ref_name, est_name, nav_data, reloc_data = common.load_reloc_trajectories(args)
+    elif(args.subcommand == "fusion"):
+        traj_ref, traj_est, ref_name, est_name, nav_data, fusion_data = common.load_fusion_trajectories(args)
+    elif(args.subcommand == "sfvio"):
+        traj_ref, traj_est, ref_name, est_name, nav_data, vio_data = common.load_vio_trajectories(args)
+    elif(args.subcommand == "sfvland"):
+        traj_ref, traj_est, ref_name, est_name, nav_data, vland_data = common.load_vland_trajectories(args)
+        print("None")
+        return
     else:
         traj_ref, traj_est, ref_name, est_name = common.load_trajectories(args)
 
-    # traj_ref, traj_est, ref_name, est_name = common.load_trajectories(args)
+
 
     traj_ref_full = None
     if args.plot_full_ref:
@@ -144,18 +154,39 @@ def run(args: argparse.Namespace) -> None:
     change_unit = metrics.Unit(args.change_unit) if args.change_unit else None
 
     result = ape(traj_ref=traj_ref, traj_est=traj_est,
-                 pose_relation=pose_relation, align=args.align,
-                 correct_scale=args.correct_scale, n_to_align=args.n_to_align,
-                 align_origin=args.align_origin, ref_name=ref_name,
-                 est_name=est_name, change_unit=change_unit)
+                pose_relation=pose_relation, align=args.align,
+                correct_scale=args.correct_scale, n_to_align=args.n_to_align,
+                align_origin=args.align_origin, ref_name=ref_name,
+                est_name=est_name, change_unit=change_unit)
 
     if args.plot or args.save_plot or args.serialize_plot:
-        if(args.subcommand == "sfvloc"):    
+        if args.subcommand == "sfvloc":
             common.plot_sfvloc_result(args, result, traj_ref,
                             result.trajectories[est_name],
                             nav_data,
                             vloc_data,
+                            vo_data,
                             traj_ref_full=traj_ref_full)
+
+
+        elif args.subcommand == "reloc":
+            common.plot_reloc_result(args, result, traj_ref,
+                            result.trajectories[est_name],
+                            nav_data,
+                            reloc_data,
+                            traj_ref_full=traj_ref_full)
+        elif args.subcommand == "fusion":
+            common.plot_fusion_result(args, result, traj_ref,
+                            result.trajectories[est_name],
+                            nav_data,
+                            fusion_data,
+                            traj_ref_full=traj_ref_full)
+        elif args.subcommand == "sfvio":
+            common.plot_vio_result(args, result, traj_ref,
+                            result.trajectories[est_name],
+                            nav_data,
+                            vio_data,
+                            traj_ref_full)
         else:
             common.plot_result(args, result, traj_ref,
                             result.trajectories[est_name],

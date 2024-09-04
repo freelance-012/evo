@@ -98,7 +98,7 @@ class PE(Metric):
         self.unit: Unit = Unit.none
         self.error: np.ndarray = np.array([])
         self.error_xyz: np.ndarray = np.array([])
-        self.error_rpy: np.ndarray = np.array([])
+        self.error_ypr: np.ndarray = np.array([])
 
     def __str__(self) -> str:
         return "PE metric base class"
@@ -193,8 +193,8 @@ class PE(Metric):
 
         if(hasattr(self, "error_xyz")):
             result.add_np_array("error_xyz_array", self.error_xyz)
-        if(hasattr(self, "error_rpy")):
-            result.add_np_array("error_rpy_array", self.error_rpy)
+        if(hasattr(self, "error_ypr")):
+            result.add_np_array("error_ypr_array", self.error_ypr)
 
         return result
 
@@ -412,7 +412,7 @@ class APE(PE):
         print(traj_ref.positions_xyz.shape)
         print(traj_ref._orientations_quat_wxyz.shape)
         self.error_xyz: np.ndarray = traj_ref.positions_xyz - traj_est.positions_xyz
-        self.error_rpy: np.ndarray = traj_ref._orientations_euler_rpy - traj_est._orientations_euler_rpy
+        self.error_ypr: np.ndarray = traj_est._orientations_euler_rpy - traj_ref._orientations_euler_rpy
 
         if self.pose_relation in (PoseRelation.translation_part,
                                   PoseRelation.point_distance):

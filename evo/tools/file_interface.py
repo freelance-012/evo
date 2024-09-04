@@ -28,6 +28,8 @@ import os
 import typing
 import zipfile
 import scipy.spatial.transform as transform
+from scipy.interpolate import interpn
+from scipy.interpolate import interp1d
 import pymap3d
 
 import numpy as np
@@ -99,6 +101,7 @@ def csv_read_matrix(file_path, delim=',', comment_str="#"):
 def read_extrinsics(calib_file_path):
     # TODO
 
+    # rk3399
     T_b_i = np.array([
         [1.0, 0.0, 0.0, 0.06],
         [0.0, 1.0, 0.0, -0.22], 
@@ -112,14 +115,32 @@ def read_extrinsics(calib_file_path):
         [0.0, 0.0, 0.0, 1.0]
     ])
     
+    # rk3588
+    # T_b_i = np.array([
+    #     [0, -1,  0,  0.284918],
+    #     [-1,  0,  0,  0.018773], 
+    #     [0,  0, -1,  0.0327], 
+    #     [0.0, 0.0, 0.0, 1.0]
+    # ])
+    # T_c_i = np.array([
+    #     [0,  1,  0, -0.2742], 
+    #     [1,  0,  0, -0.28015],
+    #     [0,  0, -1, -0.2187], 
+    #     [0.0, 0.0, 0.0, 1.0]
+    # ])
+
     T_i_b = np.linalg.inv(T_b_i)
 
     T_b_c = np.dot(T_b_i, np.linalg.inv(T_c_i))
+    T_c_b = np.linalg.inv(T_b_c)
 
-    return T_i_b, T_b_c
+    return T_i_b, T_c_b
 
 
-def transform_to_body(xyz, quat, T_x_b):
+def transform_to_body(aligned_vloc_data, T_x_b):
+    xyz = aligned_vloc_data["pos"]
+    quat = aligned_vloc_data["quat"]
+
     R_x_b = T_x_b[:3, :3]
     P_x_b = T_x_b[:3, 3]
 
@@ -132,6 +153,10 @@ def transform_to_body(xyz, quat, T_x_b):
         quat[i] = transform.Rotation.from_matrix(R_w_b).as_quat()
         xyz[i] = P_w_b
     
+    aligned_vloc_data["pos"] = xyz
+    aligned_vloc_data["quat"] = quat
+    
+    return aligned_vloc_data
 
 
 def read_tum_trajectory_file(file_path) -> PoseTrajectory3D:
@@ -226,13 +251,31 @@ def write_kitti_poses_file(file_path, traj: PosePath3D,
     if isinstance(file_path, str):
         logger.info("Poses saved to: " + file_path)
 
-def read_sf_imu_trajectory_file(ref_dir, ts_min = -1, ts_max = -1) -> PosePath3D:
+def read_home_point(home_point_file_path):
+
+    home_point_mat = csv_read_matrix(home_point_file_path, delim=' ', comment_str="#")
+    error_msg = ("sf home point files must have only one row which have 3 entries "
+                 "and no trailing delimiter at the end of the rows (space)")
+    if not home_point_mat or len(home_point_mat) != 1 or (len(home_point_mat) == 1 and len(home_point_mat[0]) != 3):
+        raise FileInterfaceException(error_msg)
+    try:
+        home_point_mat = np.array(home_point_mat).astype(float)
+    except ValueError:
+        raise FileInterfaceException(error_msg)
+    
+    home_point = {}
+    home_point["lati"] = home_point_mat[0, 1]
+    home_point["longi"] = home_point_mat[0, 0]
+    home_point["alti"] = home_point_mat[0, 2]
+    return home_point
+
+
+def read_sf_nav_trajectory_file(imu_file_path, home_point, ts_min = -1, ts_max = -1):
     """
     parses trajectory file in sf imu format (ts imu.ts status flight_mode tx ty tz yaw pitch roll vx vy vz reset_count[0] reset_count[1] reset_count[2] latitude longitude altitude altitude_msl height)
     :param ref_dir: the trajectory directory(or file handle)
     :return: trajectory.PoseTrajectory3D object
     """
-    imu_file_path = os.path.join(ref_dir, "imu.txt")
     raw_mat = csv_read_matrix(imu_file_path, delim=" ", comment_str="#")
     error_msg = ("sf imu trajectory files must have 21 entries per row "
                  "and no trailing delimiter at the end of the rows (space)")
@@ -247,22 +290,11 @@ def read_sf_imu_trajectory_file(ref_dir, ts_min = -1, ts_max = -1) -> PosePath3D
     except ValueError:
         raise FileInterfaceException(error_msg)
     
-    home_point_file_path = os.path.join(ref_dir, "home_point.txt")
-    home_point_mat = csv_read_matrix(home_point_file_path, delim=' ', comment_str="#")
-    error_msg = ("sf home point files must have 3 entries per row "
-                 "and no trailing delimiter at the end of the rows (space)")
-    if not home_point_mat or (len(home_point_mat) > 0 and len(home_point_mat[0]) != 3):
-        raise FileInterfaceException(error_msg)
-    try:
-        home_point_mat = np.array(home_point_mat).astype(float)
-    except ValueError:
-        raise FileInterfaceException(error_msg)
-
     nav_data = {}
     nav_data["ts"] = mat[:, 0]  # n x 1
     nav_data["status"] = mat[:, 2].astype(int)
     nav_data["navi_mode"] = np.bitwise_and(nav_data["status"], 15)
-    nav_data["rtk_yaw"] = np.bitwise_and(nav_data["status"], 22)
+    nav_data["rtk_yaw"] = (nav_data["status"] & (1 << 22)) != 0
     nav_data["flight_mode"] = mat[:, 3]
     nav_data["pos"] = mat[:, 4:7]  # n x 3
     nav_data["euler"] = mat[:, 7:10]  # n x 3
@@ -270,28 +302,79 @@ def read_sf_imu_trajectory_file(ref_dir, ts_min = -1, ts_max = -1) -> PosePath3D
     nav_data["reset_count"] = mat[:, 13:16]
     nav_data["geodetic"] = mat[:, 16:19]
     nav_data["height"] = mat[:, 20]
-    ned = np.empty((nav_data["geodetic"].shape[0], 3))
-    for i in range(len(nav_data["geodetic"])):
-        ned[i, :] = np.array(pymap3d.geodetic2ned(nav_data["geodetic"][i, 0], nav_data["geodetic"][i, 1], nav_data["geodetic"][i, 2], home_point_mat[0, 1], home_point_mat[0, 0], home_point_mat[0, 2], ell=pymap3d.Ellipsoid.from_name("wgs84"), deg=True))
 
+    if home_point is not None:
+        ned = np.empty((nav_data["geodetic"].shape[0], 3))
+        for i in range(len(nav_data["geodetic"])):
+            ned[i, :] = np.array(pymap3d.geodetic2ned(nav_data["geodetic"][i, 0], nav_data["geodetic"][i, 1], nav_data["geodetic"][i, 2], home_point["lati"], home_point["longi"], home_point["alti"], ell=pymap3d.Ellipsoid.from_name("wgs84"), deg=True))
+
+        nav_data["ned"] = ned
+
+    # ned = np.array(pymap3d.geodetic2ned(nav_data["geodetic"][:, 0], 
+    #                                     nav_data["geodetic"][:, 1], 
+    #                                     nav_data["geodetic"][:, 2], 
+    #                                     home_point["lati"], 
+    #                                     home_point["longi"], 
+    #                                     home_point["alti"], 
+    #                                     ell=pymap3d.Ellipsoid.from_name("wgs84"), deg=True))
 
     quat = transform.Rotation.from_euler("ZYX", nav_data["euler"], False).as_quat()
-    quat = np.roll(quat, 1, axis=1)  # shift 1 column -> w in front column
+
+    nav_data["quat"] = quat
+    nav_data["euler"] = np.degrees(nav_data["euler"])
+
     if not hasattr(imu_file_path, 'read'):  # if not file handle
         logger.debug("Loaded {} stamps and poses from: {}".format(
             len(nav_data["ts"]), imu_file_path))
     
 
-    return PoseTrajectory3D(ned, quat, nav_data["ts"]), nav_data
+    return nav_data
 
 
-def read_sf_vloc_trajectory_file(est_dir) -> PosePath3D:
+def read_sf_vland_trajectory_file(vland_file_path):
+    pass
+
+
+def read_sf_vio_trajectory_file(vio_file_path):
+    """
+    parses trajectory file in sf vio format (ts status num_inliers reset_count tx ty tz yaw pitch roll latitude longitude height)
+    :param est_dir: the trajectory directory
+    :return: trajectory.PoseTrajectory3D object
+    """
+    raw_mat = csv_read_matrix(vio_file_path, delim=" ", comment_str="#")
+    error_msg = ("sf imu trajectory files must have at least 15 entries per row "
+                 "and no trailing delimiter at the end of the rows (space)")
+    if not raw_mat or (len(raw_mat) > 0 and len(raw_mat[0]) < 15):
+        raise FileInterfaceException(error_msg)
+    try:
+        mat = np.array(raw_mat).astype(float)
+    except ValueError:
+        raise FileInterfaceException(error_msg)
+    
+    vio_data = {}
+    vio_data["ts"] = mat[:, 0]
+    vio_data["status"] = mat[:, 1]
+    vio_data["init_count"] = mat[:, 2]
+    vio_data["pos"] = mat[:, 3:6]
+    vio_data["quat"] = np.column_stack((mat[:,9], mat[:, 6:9]))
+    vio_data["vel"] = mat[:, 10:13]
+    vio_data["cost"] = mat[:, 13:15]
+
+    vio_data["euler"] = transform.Rotation.from_quat(vio_data["quat"]).as_euler("ZYX", True)
+
+    if not hasattr(vio_file_path, 'read'):  # if not file handle
+        logger.debug("Loaded {} stamps and poses from: {}".format(
+            len(vio_data["ts"]), vio_file_path))
+    
+    return vio_data
+
+
+def read_sf_vloc_trajectory_file(vloc_file_path):
     """
     parses trajectory file in sf vloc format (ts status num_inliers reset_count tx ty tz yaw pitch roll latitude longitude height)
     :param est_dir: the trajectory directory
     :return: trajectory.PoseTrajectory3D object
     """
-    vloc_file_path = os.path.join(est_dir, "vloc.txt")
     raw_mat = csv_read_matrix(vloc_file_path, delim=" ", comment_str="#")
     error_msg = ("sf imu trajectory files must have at least 13 entries per row "
                  "and no trailing delimiter at the end of the rows (space)")
@@ -313,41 +396,22 @@ def read_sf_vloc_trajectory_file(est_dir) -> PosePath3D:
     vloc_data["longitude"] = mat[:, 11]
     vloc_data["height"] = mat[:, 12]
 
-
-    valid_mat = mat[vloc_data["status"] > 1]
-
-
-    vloc_data["valid_ts"] = valid_mat[:, 0]  # n x 1
-    # vloc_data["status"] = valid_mat[:, 1]
-    # vloc_data["num_inliers"] = valid_mat[:, 2]
-    # vloc_data["reset_count"] = valid_mat[:, 3]
-    vloc_data["pos"] = valid_mat[:, 4:7]  # n x 3
-    vloc_data["euler"] = valid_mat[:, 7:10]  # n x 3
-    # vloc_data["latitude"] = valid_mat[10]
-    # vloc_data["longitude"] = valid_mat[11]
-    # vloc_data["height"] = valid_mat[12]
-
     quat = transform.Rotation.from_euler("ZYX", vloc_data["euler"], True).as_quat()
-    # TODO transform fome imu to body
-    calib_file_path = os.path.join(est_dir, "calib_raw.yaml")
-    T_i_b, _ = read_extrinsics(calib_file_path)
-    transform_to_body(vloc_data["pos"], quat, T_i_b)
+    vloc_data["quat"] = quat
 
-    quat = np.roll(quat, 1, axis=1)  # shift 1 column -> w in front column
     if not hasattr(vloc_file_path, 'read'):  # if not file handle
         logger.debug("Loaded {} stamps and poses from: {}".format(
-            len(vloc_data["valid_ts"]), vloc_file_path))
+            len(vloc_data["ts"]), vloc_file_path))
     
-    return PoseTrajectory3D(vloc_data["pos"], quat, vloc_data["valid_ts"]), vloc_data
+    return vloc_data
 
 
-def read_sf_vo_trajectory_file(est_dir) -> PosePath3D:
+def read_sf_vo_trajectory_file(vo_file_path):
     """
     parses trajectory file in sf vo format (ts num_inliers tx ty tz yaw pitch roll is_keyframe time_cost reset_count)
     :param est_dir: the trajectory directory
     :return: trajectory.PoseTrajectory3D object
     """
-    vo_file_path = os.path.join(est_dir, "vo.txt")
     raw_mat = csv_read_matrix(vo_file_path, delim=" ", comment_str="#")
     error_msg = ("sf imu trajectory files must have at least 10 entries per row "
                  "and no trailing delimiter at the end of the rows (space)")
@@ -360,23 +424,220 @@ def read_sf_vo_trajectory_file(est_dir) -> PosePath3D:
     
     vo_data = {}
     vo_data["ts"] = mat[:, 0]  # n x 1
+    vo_data["num_pts"] = mat[:, 1]
     vo_data["pos"] = mat[:, 2:5]  # n x 3
     vo_data["euler"] = mat[:, 5:8]  # n x 3
+    vo_data["is_kf"] = mat[:, 8]
+    vo_data["cost_time"] = mat[:, 9]
+    vo_data["reset_count"] = mat[:, 10]
+
     quat = transform.Rotation.from_euler("ZYX", vo_data["euler"], True).as_quat()
-
-    # TODO transform fome imu to body
-    calib_file_path = os.path.join(est_dir, "calib_raw.yaml")
-    _, T_b_c = read_extrinsics(calib_file_path)
-    T_c_b = np.linalg.inv(T_b_c)
-    transform_to_body(vo_data["pos"], quat, T_c_b)
-
-    quat = np.roll(quat, 1, axis=1)  # shift 1 column -> w in front column
-    print(quat)
+    vo_data["quat"] = quat
     if not hasattr(vo_file_path, 'read'):  # if not file handle
         logger.debug("Loaded {} stamps and poses from: {}".format(
             len(vo_data["ts"]), vo_file_path))
-    return PoseTrajectory3D(vo_data["pos"], quat, vo_data["ts"]), vo_data
+    return vo_data
 
+
+def read_sf_reloc_trajectory_file(reloc_file_path):
+    """
+    parses trajectory file in sf vloc format (ts status tx ty tz yaw pitch roll)
+    :param est_dir: the trajectory directory
+    :return: trajectory.PoseTrajectory3D object
+    """
+    raw_mat = csv_read_matrix(reloc_file_path, delim=" ", comment_str="#")
+    error_msg = ("sf reloc trajectory files must have at least 8 entries per row "
+                 "and no trailing delimiter at the end of the rows (space)")
+    if not raw_mat or (len(raw_mat) > 0 and len(raw_mat[0]) < 8):
+        # raise FileInterfaceException(error_msg)
+        print("read fusion.txt error: ", error_msg)
+        return None
+    try:
+        mat = np.array(raw_mat).astype(float)
+    except ValueError:
+        # raise FileInterfaceException(error_msg)
+        print("read reloc.txt error: ", error_msg)
+        return None
+    
+    reloc_data = {}
+    reloc_data["ts"] = mat[:, 0]
+    reloc_data["status"] = mat[:, 1]
+    reloc_data["pos"] = mat[:, 2:5]
+    reloc_data["euler"] = mat[:, 5:8]
+
+    quat = transform.Rotation.from_euler("ZYX", reloc_data["euler"], True).as_quat()
+    reloc_data["quat"] = quat
+
+    if not hasattr(reloc_file_path, 'read'):  # if not file handle
+        logger.debug("Loaded {} stamps and poses from: {}".format(
+            len(reloc_data["ts"]), reloc_file_path))
+    
+    return reloc_data
+
+
+
+def read_sf_fusion_trajectory_file(fusion_file_path):
+    """
+    parses trajectory file in sf vloc format (ts status tx ty tz yaw pitch roll)
+    :param est_dir: the trajectory directory
+    :return: trajectory.PoseTrajectory3D object
+    """
+    raw_mat = csv_read_matrix(fusion_file_path, delim=" ", comment_str="#")
+    error_msg = ("sf fusion trajectory files must have at least 8 entries per row "
+                 "and no trailing delimiter at the end of the rows (space)")
+    if not raw_mat or (len(raw_mat) > 0 and len(raw_mat[0]) < 8):
+        # raise FileInterfaceException(error_msg)
+        print("read fusion.txt error: ", error_msg)
+        return None
+    try:
+        mat = np.array(raw_mat).astype(float)
+    except ValueError:
+        # raise FileInterfaceException(error_msg)
+        print("read fusion.txt error: ", error_msg)
+        return None
+    
+    fusion_data = {}
+    fusion_data["ts"] = mat[:, 0]
+    fusion_data["status"] = mat[:, 1]
+    fusion_data["pos"] = mat[:, 2:5]
+    fusion_data["euler"] = mat[:, 5:8]
+
+    quat = transform.Rotation.from_euler("ZYX", fusion_data["euler"], True).as_quat()
+    fusion_data["quat"] = quat
+
+    if not hasattr(fusion_file_path, 'read'):  # if not file handle
+        logger.debug("Loaded {} stamps and poses from: {}".format(
+            len(fusion_data["ts"]), fusion_file_path))
+    
+    return fusion_data
+
+
+def align_reloc(nav_data, reloc_data, T_c_b, time_shift):
+    ts_min = nav_data["ts"][0]
+    ts_max = nav_data["ts"][-1]
+
+    aligned_ts = reloc_data["ts"]
+    aligned_nav_data = interpolation_nav_data(nav_data, aligned_ts)
+
+    aligned_reloc_data = transform_to_body(reloc_data, T_c_b)
+
+    return aligned_nav_data, aligned_reloc_data
+
+
+def align_fusion(nav_data, fusion_data, T_c_b, time_shift):
+    ts_min = nav_data["ts"][0]
+    ts_max = nav_data["ts"][-1]
+
+    aligned_ts = fusion_data["ts"]
+    aligned_nav_data = interpolation_nav_data(nav_data, aligned_ts)
+
+    aligned_reloc_data = transform_to_body(fusion_data, T_c_b)
+
+    return aligned_nav_data, aligned_reloc_data
+
+
+def align_vloc(nav_data, vloc_data, T_i_b, time_shift):
+    
+    ts_min = nav_data["ts"][0]
+    ts_max = nav_data["ts"][-1]
+
+
+    valid_indices = vloc_data["status"] > 1
+    valid_indices = valid_indices & (vloc_data["ts"] > ts_min) & (vloc_data["ts"] < ts_max)
+
+    aligned_ts = vloc_data["ts"][valid_indices] + time_shift
+    aligned_nav_data = interpolation_nav_data(nav_data, aligned_ts)
+
+    aligned_vloc_data = {}
+    aligned_vloc_data["ts"] = vloc_data["ts"][valid_indices]
+    aligned_vloc_data["status"] = vloc_data["status"][valid_indices]
+    aligned_vloc_data["num_inliers"] = vloc_data["num_inliers"][valid_indices]
+    aligned_vloc_data["reset_count"] = vloc_data["reset_count"][valid_indices]
+    aligned_vloc_data["pos"] = vloc_data["pos"][valid_indices]
+    aligned_vloc_data["euler"] = vloc_data["euler"][valid_indices]
+    aligned_vloc_data["latitude"] = vloc_data["latitude"][valid_indices]
+    aligned_vloc_data["longitude"] = vloc_data["longitude"][valid_indices]
+    aligned_vloc_data["height"] = vloc_data["height"][valid_indices]
+    aligned_vloc_data["quat"] = vloc_data["quat"][valid_indices]
+
+    aligned_vloc_data = transform_to_body(aligned_vloc_data, T_i_b)
+
+    return aligned_nav_data, aligned_vloc_data
+
+def align_vio(nav_data, vio_data, T_i_b, time_shift):
+    
+    valid_nav_indices = nav_data["flight_mode"] > 0
+
+    ts_min = nav_data["ts"][valid_nav_indices][0]
+    ts_max = nav_data["ts"][valid_nav_indices][-1]
+
+    print("ts_min:", ts_min)
+    print("ts_max:", ts_max)
+
+    valid_vio_indices = vio_data["status"] < 2
+    valid_vio_indices = valid_vio_indices & (vio_data["ts"] > ts_min) & (vio_data["ts"] < ts_max)
+    
+    aligned_ts = vio_data["ts"][valid_vio_indices] + time_shift
+    print("aligned_ts:", aligned_ts.shape)
+
+    if len(aligned_ts) <= 0:
+        raise Exception("aligned_ts is empty")
+
+    aligned_nav_data = interpolation_nav_data(nav_data, aligned_ts)
+
+    aligned_vio_data = {}
+    aligned_vio_data["ts"] = aligned_ts
+    aligned_vio_data["status"] = vio_data["status"][valid_vio_indices]
+    aligned_vio_data["init_count"] = vio_data["init_count"][valid_vio_indices]
+    aligned_vio_data["pos"] = vio_data["pos"][valid_vio_indices]
+    aligned_vio_data["quat"] = vio_data["quat"][valid_vio_indices]
+    aligned_vio_data["vel"] = vio_data["vel"][valid_vio_indices]
+    aligned_vio_data["euler"] = vio_data["euler"][valid_vio_indices]
+    
+    # Still has some problem
+    aligned_vio_data = transform_to_body(aligned_vio_data, T_i_b)
+
+    return aligned_nav_data, aligned_vio_data
+
+
+def interpolation_nav_data(nav_data, aligned_ts):
+    aligned_nav_data = {}
+    aligned_nav_data["ts"] = aligned_ts
+    print(nav_data["ts"].shape)
+    print(nav_data["status"].shape)
+    print(aligned_ts.shape)
+
+    aligned_nav_data["status"] = interp1d(nav_data["ts"], nav_data["status"], kind='nearest', fill_value="extrapolate")(aligned_ts)
+    aligned_nav_data["navi_mode"] = interp1d(nav_data["ts"], nav_data["navi_mode"], kind='nearest', fill_value="extrapolate")(aligned_ts)
+    aligned_nav_data["rtk_yaw"] = interp1d(nav_data["ts"], nav_data["rtk_yaw"], kind='nearest', fill_value="extrapolate")(aligned_ts)
+    aligned_nav_data["flight_mode"] = interp1d(nav_data["ts"], nav_data["flight_mode"], kind='nearest', fill_value="extrapolate")(aligned_ts)
+    aligned_nav_data["height"] = interp1d(nav_data["ts"], nav_data["height"], kind='linear', fill_value="extrapolate")(aligned_ts)
+
+    aligned_nav_data["pos"] = interpolate_linear(nav_data["ts"], nav_data["pos"], aligned_ts)
+    aligned_nav_data["velocity"] = interpolate_linear(nav_data["ts"], nav_data["velocity"], aligned_ts)
+    aligned_nav_data["reset_count"] = interpolate_linear(nav_data["ts"], nav_data["reset_count"], aligned_ts)
+    aligned_nav_data["geodetic"] = interpolate_linear(nav_data["ts"], nav_data["geodetic"], aligned_ts)
+    aligned_nav_data["ned"] = interpolate_linear(nav_data["ts"], nav_data["ned"], aligned_ts)
+
+    aligned_nav_data["euler"] = interpolate_manifold(nav_data["ts"], nav_data["euler"], aligned_ts)
+    quat = transform.Rotation.from_euler("ZYX", aligned_nav_data["euler"], True).as_quat()
+    aligned_nav_data["quat"] = quat
+
+    return aligned_nav_data
+
+def interpolate_linear(ts, y1, aligned_ts):
+    num_col = y1.shape[1]
+    y0 = np.empty((len(aligned_ts), num_col))
+    for i in range(num_col):
+        y0[:, i] = np.interp(aligned_ts, ts, y1[:, i])
+    
+    return y0
+
+def interpolate_manifold(ts, euler, aligned_ts):
+    r1 = transform.Rotation.from_euler('ZYX', euler, degrees=True)
+    slerp = transform.Slerp(ts, r1)
+    r0 = slerp(aligned_ts)
+    return r0.as_euler('ZYX', degrees=True)
 
 
 def read_euroc_csv_trajectory(file_path) -> PoseTrajectory3D:
