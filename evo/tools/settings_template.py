@@ -19,22 +19,25 @@ along with evo.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import os
-import pkgutil
+import importlib.util
+import sys
 
 
 def get_default_plot_backend() -> str:
     if os.name == "posix" and os.getenv("DISPLAY", default="") == "":
-        return "Agg"
+        # Expect Quartz as default on Mac, X11 DISPLAY is not there by default.
+        if sys.platform != "darwin":
+            return "Agg"
 
-    backends = {"PyQt5": "Qt5Agg"}
+    backends = {"PyQt5": "qtagg", "PyQt6": "qtagg"}
     for pkg in backends:
-        if pkgutil.find_loader(pkg) is not None:
+        if importlib.util.find_spec(pkg) is not None:
             return backends[pkg]
     return "TkAgg"
 
 
 # default settings with documentation
-# yapf: disable
+# fmt: off
 DEFAULT_SETTINGS_DICT_DOC = {
     "global_logfile_enabled": (
         False,
@@ -51,13 +54,27 @@ DEFAULT_SETTINGS_DICT_DOC = {
          "E.g. 'sxyz' or 'ryxy', where s=static or r=rotating frame.\n"
          "See evo/core/transformations.py for more information.")
     ),
+    "map_tile_provider": (
+        "OpenStreetMap.Mapnik",
+        ("Map tile provider used by the --map_tile option.\n"
+         "Requires the contextily package to be installed.\n"
+         "See: https://contextily.readthedocs.io/en/latest/providers_deepdive.html")
+    ),
+    "map_tile_api_token": (
+        "",
+        "API token for the map_tile_provider, if required."
+    ),
+    "plot_3d_zoom": (
+        0.9,
+        "Default zoom factor for 3D plots. Can be used to avoid clipping labels."
+    ),
     "plot_axis_marker_scale": (
         0.,
         "Scaling parameter of pose coordinate frame markers. 0 will draw nothing."
     ),
     "plot_backend": (
         get_default_plot_backend(),
-        "matplotlib backend - default is 'Qt5Agg' (if PyQt is installed) or 'TkAgg'."
+        "matplotlib backend - default is 'qtagg' (if PyQt5/PyQt6 is installed) or 'TkAgg'."
     ),
     "plot_pose_correspondences": (
         False,
@@ -75,7 +92,7 @@ DEFAULT_SETTINGS_DICT_DOC = {
          "Can also be set to 'none'.")
     ),
     "plot_figsize": (
-        [6, 6],
+        [10, 10],
         "The default size of one (sub)plot figure (width, height)."
     ),
     "plot_fontfamily": (
@@ -93,6 +110,11 @@ DEFAULT_SETTINGS_DICT_DOC = {
     "plot_invert_yaxis": (
         False,
         "Invert the y-axis of plots."
+    ),
+    "plot_legend_loc": (
+        "best",
+        "Plot legend location. See here for the available 'loc' options:\n"
+        "https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.legend.html"
     ),
     "plot_linewidth": (
         1.5,
@@ -112,7 +134,7 @@ DEFAULT_SETTINGS_DICT_DOC = {
         "Alpha value of the reference trajectories in plots."
     ),
     "plot_reference_color": (
-        "black",
+        "#444444",
         "Color of the reference trajectories in plots."
     ),
     "plot_reference_linestyle": (
@@ -123,6 +145,11 @@ DEFAULT_SETTINGS_DICT_DOC = {
         0.,
         "Scaling parameter of pose coordinate frame markers of reference trajectories. "
         + "0 will draw nothing."
+    ),
+    "plot_seaborn_enabled": (
+        True,
+        "Enables / disables seaborn's styling for plots.\n"
+        "Setting this to false will use the classic matplotlib style."
     ),
     "plot_seaborn_palette": (
         "deep6",
@@ -187,6 +214,27 @@ DEFAULT_SETTINGS_DICT_DOC = {
         "Style used for the syntax highlighting in evo_config.\n"
         "See here for available styles: https://pygments.org/styles/"
     ),
+    "rerun_spawn": (
+        True,
+        "Spawn a viewer window when logging data to Rerun.\n"
+        "If set to False, the viewer must be started manually."
+    ),
+    "rerun_viewer_port": (
+        9876,
+        "Port for the Rerun viewer gRPC proxy."
+    ),
+    "ros2_bag_storage_plugin": (
+        "mcap",
+        "ROS 2 bag storage plugin to use when writing files ('mcap' or 'sqlite3')."
+    ),
+    "ros2_bag_format_version": (
+        9,
+        "ROS 2 bag file format version to use when writing files."
+    ),
+    "ros_fallback_frame_id": (
+        "world",
+        "frame_id to use when exporting bags from sources without a frame_id."
+    ),
     "ros_map_alpha_value": (
         1.0,
         "Alpha value for blending ROS map image slices."
@@ -239,7 +287,7 @@ DEFAULT_SETTINGS_DICT_DOC = {
         "TF transform cache time in seconds."
     ),
 }
-# yapf: enable
+# fmt: on
 
 # without documentation
 DEFAULT_SETTINGS_DICT = {k: v[0] for k, v in DEFAULT_SETTINGS_DICT_DOC.items()}

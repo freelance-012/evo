@@ -4,7 +4,7 @@
 
 | Linux / macOS / Windows / ROS / ROS2 |
 | :---: |
-| [![Build Status](https://dev.azure.com/michl2222/michl2222/_apis/build/status/MichaelGrupp.evo?branchName=master)](https://dev.azure.com/michl2222/michl2222/_build/latest?definitionId=1&branchName=master) |
+| [![CI](https://github.com/MichaelGrupp/evo/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/MichaelGrupp/evo/actions/workflows/ci.yml) |
 
 This package provides executables and a small library for handling, evaluating and comparing the trajectory output of odometry and SLAM algorithms.
 
@@ -18,16 +18,16 @@ Supported trajectory formats:
 See [here](https://github.com/MichaelGrupp/evo/wiki/Formats) for more infos about the formats.
 
 <a href="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/ape_demo_ORB_map.png" target="_blank">
-  <img src="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/ape_demo_ORB_map.png" alt="evo" height="200" border="5" />
-</a>
-<a href="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/res_violin.png" target="_blank">
-  <img src="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/res_violin.png" alt="evo" height="200" border="5" />
+  <img src="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/ape_demo_ORB_map.png" alt="evo" height="175" border="5" />
 </a>
 <a href="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/markers.png" target="_blank">
-  <img src="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/markers.png" alt="evo" height="200" border="5" />
+  <img src="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/markers.png" alt="evo" height="175" border="5" />
 </a>
-<a href="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/res_stats.png" target="_blank">
-  <img src="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/res_stats.png" alt="evo" height="200" border="5" />
+<a href="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/map_tile_osm.png" target="_blank">
+  <img src="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/map_tile_osm.png" alt="evo" height="175" border="5" />
+</a>
+<a href="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/traj_rerun.gif" target="_blank">
+  <img src="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/traj_rerun.gif" alt="evo" height="175" border="5" />
 </a>
 
 ---
@@ -38,7 +38,7 @@ evo has several advantages over other public benchmarking tools:
 
 * common tools for different formats
 * algorithmic options for association, alignment, scale adjustment for monocular SLAM etc.
-* flexible options for output, [plotting](https://github.com/MichaelGrupp/evo/wiki/Plotting) or export (e.g. LaTeX plots or Excel tables)
+* flexible options for output, [plotting](https://github.com/MichaelGrupp/evo/wiki/Plotting), [visualization](https://github.com/MichaelGrupp/evo/wiki/Rerun-integration) or export (e.g. LaTeX plots or Excel tables)
 * a powerful, configurable CLI that can cover many use cases
 * modular `core` and `tools` libraries for custom extensions
 * faster than other established Python-based tools ([see here](https://github.com/MichaelGrupp/evo/blob/master/doc/performance.md))
@@ -51,42 +51,71 @@ evo has several advantages over other public benchmarking tools:
 
 Installation is easy-peasy if you're familiar with this: https://xkcd.com/1987/#
 
-evo supports **Python 3.8+**. The last evo version that supports **Python 2.7** is `1.12.0`.
+The latest version of evo supports **Python 3.10+**.
 You might also want to use a [virtual environment](https://github.com/MichaelGrupp/evo/blob/master/doc/install_in_virtualenv.md).
 
 ### From PyPi
 If you just want to use the executables of the latest release version, the easiest way is to run:
 ```bash
-pip install evo --upgrade --no-binary evo
+pip install evo
 ```
-This will download the package and its dependencies from [PyPI](https://pypi.org/project/evo/) and install or upgrade them. Depending on your OS, you might be able to use `pip2` or `pip3` to specify the Python version you want. Tab completion for Bash terminals is supported via the [argcomplete](https://github.com/kislyuk/argcomplete/) package on most UNIX systems - open a new shell after the installation to use it (without `--no-binary evo` the tab completion might not be installed properly). If you want, you can subscribe to new releases via https://libraries.io/pypi/evo.
+This will download the package and its dependencies from [PyPI](https://pypi.org/project/evo/) and install or upgrade them. If you want, you can subscribe to new releases via https://libraries.io/pypi/evo.
+
+To upgrade to a newer version: `pip install --upgrade evo`
 
 ### From Source
 Run this in the repository's base folder:
 ```bash
-pip install --editable . --upgrade --no-binary evo
+pip install --editable .
 ```
+
+### Pixi
+
+[Pixi](https://prefix.dev) is an easy-to-use alternative if you want to have an isolated development environment. Run `pixi add evo` if you have an existing environment, or clone this repository and run `pixi shell` to open a dev shell.
+
+### Tab completion
+
+Tab completion is supported via the [argcomplete](https://github.com/kislyuk/argcomplete/) package. Run `activate-global-python-argcomplete` after the installation to use it.
 
 ### Dependencies
 
 **Python packages**
 
 evo has some required dependencies that are ***automatically resolved*** during installation with pip.
-They are specified in the `install_requires` part of the `setup.py` file.
+See the `pyproject.toml` file for all details.
 
-**PyQt5 (optional)**
+**PyQt6 (optional)**
 
-PyQt5 will give you the enhanced GUI for plot figures from the "*Qt5Agg*" matplotlib backend (otherwise: "*TkAgg*"). If PyQt5 is already installed when installing this package, it will be used as a default (see `evo_config show`). To change the plot backend afterwards, run `evo_config set plot_backend Qt5Agg`.
+[PyQt6](https://pypi.org/project/PyQt6/) will give you the enhanced GUI for plot figures from the "*qtagg*" matplotlib backend (otherwise: "*TkAgg*"). If PyQt6 is already installed when installing this package, it will be used as a default (see `evo_config show`). To change the plot backend afterwards, run `evo_config set plot_backend qtagg`.
+
+If you run into issues with installing tkinter, trying PyQt6 is a good idea. 
 
 **ROS (optional)**
 
-Some ROS-related features require a ROS installation, see [here](http://www.ros.org/). We are testing this package with ROS Noetic and Iron. Previous versions (`<= 1.12.0`) work with Melodic, Kinetic and Indigo.
+Some ROS-related features require a ROS installation, see [here](http://www.ros.org/). We are testing this package with ROS Kilted.
+
+> Reading ROS bag files works also without a ROS installation thanks to the great [rosbags](https://pypi.org/project/rosbags/) package that is installed together with evo. This allows you also to read ROS 1 & 2 bags even if you don't have one of those ROS distros installed. (except for reading `/tf` topics, because there we need the buffer implementation from ROS)
+
+**contextily (optional)**
+
+[contextily](https://contextily.readthedocs.io/en/latest/index.html) is required for [adding map tiles](https://github.com/MichaelGrupp/evo/wiki/Plotting#geographic-map-tiles) to plots of geo-referenced data.
+
+**Rerun (optional)**
+
+You can send data also to the [rerun](https://rerun.io/) viewer. Just `pip install rerun-sdk` and add `--rerun` to your command. See the related [Wiki page](https://github.com/MichaelGrupp/evo/wiki/Rerun-integration) for more details.
+
+<a href="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/traj_rerun.gif" target="_blank">
+  <img src="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/traj_rerun.gif" alt="evo" width="350" border="5" />
+</a>
+<a href="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/ape_rerun.gif" target="_blank">
+  <img src="https://raw.githubusercontent.com/MichaelGrupp/evo/master/doc/assets/ape_rerun.gif" alt="evo" width="350" border="5" />
+</a>
 
 ---
 
 ## Command Line Interface
 
-After installation with setup.py or from pip, the following executables can be called globally from your command-line:
+After installation with pip, the following executables can be called globally from your command-line:
 
 **Metrics:**
 
@@ -97,7 +126,6 @@ After installation with setup.py or from pip, the following executables can be c
 
 * `evo_traj` - tool for analyzing, plotting or exporting one or more trajectories
 * `evo_res` - tool for comparing one or multiple result files from `evo_ape` or `evo_rpe`
-* `evo_fig` - (experimental) tool for re-opening serialized plots (saved with `--serialize_plot`)
 * `evo_config` - tool for global settings and config file manipulation
 
 Call the commands with `--help` to see the options, e.g. `evo_ape --help`. Tab-completion of command line parameters is available on UNIX-like systems.
@@ -204,7 +232,7 @@ A few "inoffical" scripts for special use-cases are collected  in the `contrib/`
 ---
 
 ## Trouble
-*":scream:, this piece of :shit: software doesn't do what I want!!1!1!!"*
+*"😱, this piece of 💩 software doesn't do what I want!!1!1!!"*
 
 **First aid:**
 * append `-h`/ `--help` to your command

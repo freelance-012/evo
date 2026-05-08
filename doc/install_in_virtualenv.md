@@ -7,6 +7,7 @@ Additionally, you can have multiple environments in parallel that don't interfer
 ## virtualenv & virtualenvwrapper
 
 `virtualenvwrapper` is highly recommended, it makes using virtual environments much more comfortable.
+But other solutions like `venv`, `pyenv`, `uv` etc can also be used if you prefer (not documented here).
 
 Below are installation instructions for Ubuntu.
 If you use any other OS, see the documentation for how to install it on your system:
@@ -46,11 +47,13 @@ workon evaluation
 
 Install evo and its dependencies inside the virtual environment:
 ```shell
-pip install --ignore-installed evo --no-binary evo
+pip install evo
+
+# or to force newest dependency versions from pypi: pip install --ignore-installed evo (might lead to incompatibities with system packages)
 
 # or alternatively from source:
-cd <evo>  # go to evo base source folder that contains setup.py
-pip install --ignore-installed --editable . --no-binary evo
+cd <evo>  # go to evo base source folder that contains pyproject.toml
+pip install --editable .
 ```
 Now, the package should be installed in the virtualenv and you can use it.
 
@@ -72,4 +75,5 @@ rmvirtualenv evaluation
 ```
 
 ## Tab completion (UNIX / Bash)
-Unfortunately, tab command completion with the [argcomplete](https://github.com/kislyuk/argcomplete) might not work immediately in a virtual environment. You might need to install argcomplete outside of your virtualenv and run `activate-global-python-argcomplete` to make it work globally on your machine.
+
+Run `activate-global-python-argcomplete --user` in your virtual environment, follow the instructions of it and open a new terminal afterwards to use tab command completion via [argcomplete](https://github.com/kislyuk/argcomplete).

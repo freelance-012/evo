@@ -109,3 +109,11 @@ venv.bak/
 
 # VS Code
 .vscode/
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+
+# MacOS
+.DS_Store
+
+.claude/*

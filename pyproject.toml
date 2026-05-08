@@ -1,0 +1,124 @@
+[project.urls]
+Homepage = "https://github.com/MichaelGrupp/evo"
+Wiki = "https://github.com/MichaelGrupp/evo/wiki"
+Bugtracker = "https://github.com/MichaelGrupp/evo/issues"
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+[tool.hatch.version]
+path = "evo/__init__.py"
+
+
+[project]
+name = "evo"
+description = "Python package for the evaluation of odometry and SLAM"
+authors = [
+    { name="Michael Grupp", email="michael.grupp@tum.de" },
+]
+license = { text = "GNU General Public License v3 (GPLv3)" }
+readme = "README.md"
+dynamic = ["version"]
+
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Topic :: Scientific/Engineering",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython"
+]
+keywords = [
+    "SLAM", "odometry", "trajectory", "evaluation", "metric",
+    "vision", "laser", "visual", "robotics"
+]
+
+# Adapt also the extra check in __init__.py when changing this:
+requires-python = ">=3.10"
+
+dependencies = [
+    "numpy>=1.18.5",
+    "matplotlib>=3.6.0",
+    "scipy>=1.2",
+    "pandas",
+    "numexpr>=2.7.3",
+    "seaborn>=0.9",
+    "natsort",
+    "argcomplete",
+    "colorama>=0.3",
+    "pygments",
+    "pyyaml",
+    "pillow",
+    "rosbags>=0.11.1",
+    "packaging",
+]
+
+[project.optional-dependencies]
+gui = ["PyQt6"]
+geo = ["contextily"]
+rerun = ["rerun-sdk>=0.28.0"]
+
+
+[project.scripts]
+evo_ape = "evo.cli.entry_points:ape"
+evo_rpe = "evo.cli.entry_points:rpe"
+evo_traj = "evo.cli.entry_points:traj"
+evo_res = "evo.cli.entry_points:res"
+evo_config = "evo.cli.config:main"
+evo_ipython = "evo.cli.ipython:main"
+evo = "evo.cli.evo_main:main"
+
+
+[tool.black]
+line-length = 79
+extend-exclude = "fastentrypoints.py|evo/core/transformations.py|test/tum_benchmark_tools/*"
+
+[tool.mypy]
+ignore_missing_imports = true
+files = ["evo/", "test/", "contrib/", "examples/"]
+exclude = ["test/tum_benchmark_tools/"]
+
+[[tool.mypy.overrides]]
+# Workaround for broken apsw pyi (?).
+module = "apsw.*"
+ignore_errors = true
+follow_imports = "skip"
+
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64", "linux-aarch64", "win-64"]
+
+[tool.pixi.pypi-dependencies]
+evo = { path = ".", editable = true }
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+py-310 = ["py-310"]
+py-314 = ["py-314"]
+
+[tool.pixi.feature.py-310.dependencies]
+python = "~=3.10.0"
+[tool.pixi.feature.py-314.dependencies]
+python = "~=3.14.0"
+
+[tool.pixi.tasks]
+fmt = "black ."
+mypy = "mypy ."
+test = "pytest -sv"
+release = "sh .ci/release.sh"
+
+[tool.pixi.dependencies]
+pip = ">=25.3,<26"
+mypy = ">=1.19.1,<2"
+black = ">=26.1.0,<27"
+pytest = ">=9.0.2,<10"
+ipython = ">=8.37.0,<10"
+hatch = ">=1.16.2,<2"

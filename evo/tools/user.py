@@ -21,6 +21,8 @@ along with evo.  If not, see <http://www.gnu.org/licenses/>.
 import os
 import logging
 
+from evo.tools._typing import PathStr
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,17 +30,19 @@ def prompt_val(msg: str = "enter a value:") -> str:
     return input(msg + "\n")
 
 
-def confirm(msg: str = "enter 'y' to confirm or any other key to cancel",
-            key: str = 'y') -> bool:
+def confirm(
+    msg: str = "enter 'y' to confirm or any other key to cancel",
+    key: str = "y",
+) -> bool:
     if input(msg + "\n") != key:
         return False
     else:
         return True
 
 
-def check_and_confirm_overwrite(file_path: str) -> bool:
+def check_and_confirm_overwrite(file_path: PathStr) -> bool:
     if os.path.isfile(file_path):
-        logger.warning(file_path + " exists, overwrite?")
+        logger.warning("%s exists, overwrite?", file_path)
         return confirm("enter 'y' to overwrite or any other key to cancel")
     else:
         return True
